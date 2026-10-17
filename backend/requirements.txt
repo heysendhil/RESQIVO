@@ -1,0 +1,9 @@
+# Runtime dependencies required to run the RESQIVO API.
+# Lower bounds are the versions tested with this project.
+
+fastapi>=0.143.0,<0.144
+pydantic>=2.14.1,<3
+uvicorn[standard]>=0.54.0,<0.55
+
+# Installed by FastAPI, which does not cap its version.
+starlette>=1.7.0,<2

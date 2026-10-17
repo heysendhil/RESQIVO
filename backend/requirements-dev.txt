@@ -1,0 +1,9 @@
+-r requirements.txt
+
+# Testing
+pytest>=9.1.1,<10
+# HTTP client used by FastAPI's TestClient (from Starlette).
+httpx2>=2.13.1,<3
+
+# Code quality
+ruff>=0.17.1,<0.18
