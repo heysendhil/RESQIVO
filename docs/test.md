@@ -122,6 +122,8 @@ python -m pytest -v               # backend test suite
 
 Run pytest from `backend/` so that the `app` package can be imported.
 
+**Continuous integration:** `.github/workflows/ci.yml` runs on every push to `main` and every pull request targeting `main`. On `ubuntu-latest` with Python 3.14, it installs `backend/requirements-dev.txt`, then runs `python -m ruff check .`, `python -m ruff format --check .` and `python -m pytest -q` from `backend/`. Run the commands above to reproduce it locally.
+
 The test run should show no warnings. An earlier `StarletteDeprecationWarning` ("Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead") was resolved by replacing `httpx` with `httpx2`. If it appears, `httpx` is installed but `httpx2` is not; reinstall from `requirements-dev.txt`.
 
 ## 4. Domain and Constraint Test Cases
