@@ -126,6 +126,75 @@ Run pytest from `backend/` so that the `app` package can be imported.
 
 The test run should show no warnings. An earlier `StarletteDeprecationWarning` ("Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead") was resolved by replacing `httpx` with `httpx2`. If it appears, `httpx` is installed but `httpx2` is not; reinstall from `requirements-dev.txt`.
 
+### 3.7 Validation API
+
+The FastAPI app (`backend/app/main.py`) exposes two endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Returns `{"status": "ok", "service": "RESQIVO"}` |
+| `POST /validate` | Runs `validate_plan` on a plan and returns the result |
+
+**Request:** a `PlanValidationRequest` (`backend/app/models/plan.py`) with three required lists, each of which may be empty. Items use the existing `Resource`, `ResourceAllocation` and `Shelter` models, and unknown keys are rejected at every level.
+
+```json
+{
+  "resources": [
+    {"resource_id": "water-001", "name": "Drinking Water", "resource_type": "drinking_water",
+     "quantity_available": 1000, "unit": "litres", "location": "Warehouse A"}
+  ],
+  "allocations": [
+    {"allocation_id": "alloc-001", "resource_id": "water-001",
+     "destination_id": "shelter-001", "quantity_allocated": 1100}
+  ],
+  "shelters": [
+    {"shelter_id": "shelter-001", "name": "Community Hall", "location": "Simulated Zone A",
+     "capacity": 500, "current_occupancy": 200}
+  ]
+}
+```
+
+**Response (HTTP 200):** the `ValidationResult` from `validate_plan`, returned whether or not the plan is valid. Violation codes, entity IDs, details and ordering are unchanged (see section 4.1). For the request above:
+
+```json
+{
+  "valid": false,
+  "violations": [
+    {"code": "DOM-04", "entity_id": "water-001",
+     "message": "Resource allocation exceeds available stock.",
+     "details": {"quantity_available": 1000, "quantity_allocated": 1100, "excess_quantity": 100}}
+  ]
+}
+```
+
+**HTTP 422:** a malformed body (a missing list, an invalid field value, an unknown key or non-JSON content) is rejected by FastAPI with its standard validation error. Interactive documentation is at `/docs` while the backend is running.
+
+Tests: `backend/tests/test_validate_api.py` (endpoint behaviour) and `backend/tests/test_cors.py` (allowed origins).
+
+### 3.8 Frontend
+
+The Next.js app in `frontend/` (TypeScript, Tailwind CSS) shows two synthetic sample plans (`frontend/lib/sample-plans.ts`) and sends the selected plan to `POST /validate`. The displayed Valid/Invalid status and violations come from the backend response. `frontend/lib/api.ts` makes the request, checks the response shape, and reports an unreachable API or an unexpected response as an error.
+
+To run it, with the backend running on port 8000:
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:3000
+```
+
+**API URL:** `NEXT_PUBLIC_API_BASE_URL` sets the backend base URL and defaults to `http://127.0.0.1:8000`. To override it, copy `frontend/.env.example` to `frontend/.env.local` and change the value. Next.js inlines it into the browser bundle at build time, so it must never contain a secret. `.env.local` is ignored by Git.
+
+**CORS:** because the frontend and API are on different origins, the backend allows cross-origin requests only from `http://localhost:3000` and `http://127.0.0.1:3000`, only for `GET` and `POST`, and only the `Content-Type` request header. A hosted deployment must add its frontend origin explicitly to `ALLOWED_ORIGINS` in `backend/app/main.py`; requests from any other origin are refused.
+
+Frontend checks, from `frontend/` (the CI workflow runs backend checks only):
+
+```bash
+npm run lint       # ESLint
+npx tsc --noEmit   # type check (no package script; uses the installed TypeScript)
+npm run build      # production build, which also type-checks
+```
+
 ## 4. Domain and Constraint Test Cases
 
 | ID | Scenario | Expected result |
@@ -265,3 +334,6 @@ Update this section during implementation. Do not pre-fill results.
 | 2026-10-17 | None: repository has no commits yet | Clean venv: `pip install -r requirements.txt`, then `/health` called directly and `validate_plan` imported | Passed: `pip check` clean; `/health` returned 200; pytest not installed, as expected | Resolved FastAPI 0.143.3, Starlette 1.8.0, Pydantic 2.14.1, Uvicorn 0.54.0 |
 | 2026-10-17 | None: repository has no commits yet | Clean venv: `pip install -r requirements-dev.txt`, then Ruff checks and `python -m pytest -v -W error::DeprecationWarning` | Ruff passed (20 files formatted); 52 passed, 0 failed, 0 warnings | httpx2 2.13.1; `httpx` not installed |
 | 2026-10-17 | None: repository has no commits yet | Project `.venv`: Ruff checks and `python -m pytest -v` | Ruff passed (20 files formatted); 52 passed, 0 failed, 0 warnings | FastAPI 0.143.0, Starlette 1.7.0, httpx2 2.13.1; `httpx` warning resolved |
+| 2026-10-21 | `13264af` plus uncommitted validation API and frontend changes | `python -m ruff check .` and `python -m ruff format --check .` (Ruff 0.17.1) | Passed: no violations; 23 files already formatted | Run from `backend/` |
+| 2026-10-21 | `13264af` plus uncommitted validation API and frontend changes | `python -m pytest -q` (pytest 9.1.1, Python 3.14.6) | 64 passed, 0 failed, 0 warnings | Adds 9 `/validate` API tests and 3 CORS tests |
+| 2026-10-21 | `13264af` plus uncommitted validation API and frontend changes | `npm run lint`, `npx tsc --noEmit`, `npm run build` (Next.js 16.3.8, Node 24.21.0) | All passed | Run from `frontend/` |
