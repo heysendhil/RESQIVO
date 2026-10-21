@@ -14,6 +14,8 @@ Do not begin a later task until the current task's acceptance criteria are check
 
 ```text
 resqivo/
+├── .github/
+│   └── workflows/
 ├── backend/
 │   ├── app/
 │   └── tests/
@@ -32,9 +34,32 @@ resqivo/
 └── README.md
 ```
 
-Create only the folders and files required for the active task. Do not scaffold every planned component before its phase begins.
+Create only the folders and files required for the active task. Do not scaffold every planned component before its phase begins. Generated artefacts such as the ChromaDB index are not committed.
 
-## 3. Phases and Tasks
+## 3. Current Status
+
+| Task | Status | Evidence |
+|---|---|---|
+| 0.1–0.3 Documentation | Done | `docs/understanding.md`, `docs/plan.md`, `docs/test.md` |
+| 0.4 AI architecture decision | Done | This plan and `understanding.md` section 7 |
+| 1.1 Initialize repository | Partial | Git repository and `.gitignore`; no root `README.md` yet |
+| 1.2 Backend skeleton | Done | FastAPI `GET /health` with a test |
+| 1.3 Frontend skeleton | Done | Next.js app in `frontend/` |
+| 1.4 Configuration and baseline | Partial | `frontend/.env.example`, `backend/.env.example` (retrieval settings only); run commands in `test.md` sections 3.6 and 3.8 and `docs/rag.md`; no root `README.md` |
+| 2.1 Data contracts | Partial | Scenario, resource, shelter, allocation and plan-request models with tests |
+| 2.2 Synthetic scenario fixtures | Not started | Sample plans exist only in `frontend/lib/sample-plans.ts` |
+| 2.3 Deterministic planning tools | Done | `validate_plan` and its tests |
+| 3.1 Scenario API | Not started | `POST /validate` exists, but there are no scenario endpoints |
+| 3.3 Draft plan and validation view | Partial | The frontend displays `POST /validate` results |
+| 4.0 Dependency compatibility check | Done | `docs/dependency-compatibility.md` |
+| 4.1 Knowledge preparation | Partial | `docs/knowledge-sources.md` and `knowledge/seed/sources.json`; only WHO-01 is cleared for indexing; NDMA permission and three licence checks outstanding |
+| 4.2 Retrieval pipeline | Done (synthetic corpus) | `backend/app/rag/`, `docs/rag.md`; offline tests pass with synthetic fixtures. Real-source indexing of WHO-01 not run (no local text prepared); real embedding model not yet approved |
+| 4.3 Grounded question answering | Not started | |
+| 5.1–7.4 Agents, tool calling, AI evaluation, tracing | Not started | No LLM, agent, evaluation or tracing code exists |
+
+A backend CI workflow (`.github/workflows/ci.yml`) runs Ruff and pytest on pushes and pull requests to `main`.
+
+## 4. Phases and Tasks
 
 ### Phase 0 — Requirements and Documentation
 
@@ -49,6 +74,11 @@ Create only the folders and files required for the active task. Do not scaffold 
 **Task 0.3 — Test strategy**
 - Define test levels, safety checks, scenario fixtures, and evaluation measures.
 - **Acceptance:** `test.md` specifies how the initial workflow will be verified.
+
+**Task 0.4 — AI architecture decision**
+- Record the approved AI stack: Anthropic Claude via `langchain-anthropic`, LangChain, LangGraph (replacing CrewAI), ChromaDB, RAGAS (subject to compatibility), and LangSmith (disabled by default).
+- Record the knowledge publishers (NDMA India, WHO, UNDRR) and the AI control principles in `understanding.md` section 7.4.
+- **Acceptance:** Both documents describe all four capstone requirements (RAG, tool calling, evaluation, observability) without claiming they are implemented.
 
 **Gate:** Review all three documents together before application implementation.
 
@@ -109,13 +139,22 @@ Create only the folders and files required for the active task. Do not scaffold 
 
 ### Phase 4 — Retrieval-Augmented Generation (RAG)
 
+**Task 4.0 — Dependency compatibility check**
+- In a disposable environment, install LangGraph, LangChain, `langchain-anthropic`, `langchain-chroma`, ChromaDB, LangSmith, and RAGAS on the project's Python version (3.14).
+- Confirm that each package imports, that structured output and tool calling work with the chosen Claude model without forcing a specific tool, and which local embedding model ChromaDB will use.
+- Known risk: RAGAS depends on `scikit-network`, which publishes wheels only up to Python 3.13. If RAGAS cannot be installed on 3.14, decide between a separate Python 3.13 evaluation environment and custom metrics only.
+- Pin versions that have been released for at least two weeks. Keep runtime and evaluation dependencies in separate requirements files.
+- **Acceptance:** Install results and chosen versions are recorded; no application code depends on an unverified package.
+
 **Task 4.1 — Knowledge preparation**
-- Add a small, curated set of appropriate public guidance documents or clearly labelled educational material.
-- Record document titles, sources, dates where available, and metadata.
-- **Acceptance:** Every indexed document has traceable source metadata.
+- Add a small, curated set of official public guidance documents from NDMA India, WHO, and UNDRR.
+- Record each document's title, publisher, source URL, publication date where available, and retrieval date, and check the publisher's terms of use.
+- **Acceptance:** Every indexed document has traceable source metadata; no other publishers are included unless the source list is formally extended.
 
 **Task 4.2 — Retrieval pipeline**
-- Implement chunking, embeddings, indexing, and retrieval.
+- Implement chunking, embeddings, ChromaDB indexing, and retrieval through `langchain-chroma`.
+- Build the index with a script; store it outside version control.
+- Make the embedding function injectable so tests use deterministic fake embeddings and need no network access.
 - **Acceptance:** A small retrieval test set returns relevant source passages for known questions.
 
 **Task 4.3 — Grounded question answering**
@@ -127,23 +166,25 @@ Create only the folders and files required for the active task. Do not scaffold 
 
 **Task 5.1 — Define agent responsibilities**
 - Define narrow responsibilities for scenario analysis, evidence retrieval, plan drafting, and review.
-- Document tool permissions and the data each agent may access.
-- **Acceptance:** Each agent has an explicit input, output, and bounded responsibility.
+- Document tool permissions and the data each step may access.
+- **Acceptance:** Each step has an explicit input, output, and bounded responsibility.
 
 **Task 5.2 — Orchestrate a draft-plan workflow**
-- Implement a controlled CrewAI/CrewAI Flow workflow after confirming library compatibility.
-- Use structured inputs and outputs.
-- **Acceptance:** A test scenario completes the workflow and records failures clearly.
+- Implement a LangGraph workflow after confirming library compatibility (Task 4.0).
+- Use structured inputs and outputs, with Claude accessed through `langchain-anthropic`.
+- Include a deterministic validation step that application code always runs on the proposed plan; it is not a tool the model may choose to skip.
+- If validation fails, allow a fixed, configurable maximum number of correction attempts, then return the latest plan with its validation failures.
+- **Acceptance:** A test scenario completes the workflow; the returned validity always equals `validate_plan` output, including when a fake model claims an invalid plan is valid (`test.md` SAFE-03); correction stops at the configured maximum; failures are recorded clearly (SAFE-08).
 
 **Task 5.3 — Tool calling and deterministic checks**
-- Expose approved tools for scenario lookup, resource calculation, and constraint validation.
-- Treat tool outputs as data; validate all arguments and results.
+- Expose approved LangChain tools for guidance search, scenario lookup, resource calculation, and constraint validation (wrapping the existing `validate_plan`).
+- Treat tool outputs and retrieved content as data; validate all arguments and results (SAFE-04).
 - **Acceptance:** Invalid arguments are rejected and AI output cannot bypass deterministic checks.
 
 **Task 5.4 — Human review boundary**
 - Clearly label plans as drafts and show unresolved constraints or missing evidence.
 - Do not add automated real-world dispatch or public-warning actions.
-- **Acceptance:** No workflow can execute consequential external actions.
+- **Acceptance:** No workflow can execute consequential external actions (SAFE-06).
 
 ### Phase 6 — Plan Stress Testing
 
@@ -163,14 +204,16 @@ Create only the folders and files required for the active task. Do not scaffold 
 - **Acceptance:** Results are recorded and failures are addressed rather than hidden.
 
 **Task 7.2 — AI evaluation**
-- Create a fixed set of scenario questions and expected evidence.
-- Evaluate retrieval relevance, answer grounding, tool correctness, and plan-constraint validity.
-- **Acceptance:** Evaluation results are repeatable and limitations are documented.
+- Create a versioned evaluation set of scenario questions, expected source documents, and expected evidence.
+- Evaluate retrieval relevance, answer grounding, tool correctness, and agreement with the deterministic validator.
+- Use RAGAS (for example faithfulness, answer relevancy, context precision, and context recall) if Task 4.0 confirms compatibility; otherwise use documented custom metrics.
+- Run evaluations outside the default CI workflow because they call the LLM.
+- **Acceptance:** Evaluation results are repeatable, record the model, package versions, dataset version, and date in `test.md`, and document limitations.
 
 **Task 7.3 — Observability**
-- Add structured logs and traceable workflow events without logging secrets.
-- Add tracing/evaluation tools only when the baseline workflow is stable.
-- **Acceptance:** A failed workflow can be investigated from its recorded events.
+- Add structured logs with request identifiers and traceable workflow events, without logging secrets (SAFE-07).
+- Add LangSmith tracing for LangGraph runs, disabled by default and enabled only through environment variables.
+- **Acceptance:** A failed workflow can be investigated from its recorded events or trace; CI runs with tracing disabled.
 
 **Task 7.4 — Security and privacy review**
 - Check secret handling, input validation, dependency configuration, and data boundaries.
@@ -191,7 +234,24 @@ Create only the folders and files required for the active task. Do not scaffold 
 - Prepare architecture diagrams, setup instructions, test/evaluation results, limitations, and a demonstration script.
 - **Acceptance:** The project can be reviewed and reproduced without relying on undocumented steps.
 
-## 4. Definition of Done for Every Task
+## 5. Configuration, Secrets, and CI
+
+Planned backend environment variables, documented with placeholder values in a backend `.env.example` when the AI phases begin:
+
+| Variable | Purpose | Secret |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Claude API access | Yes |
+| `RESQIVO_LLM_MODEL` | Claude model ID | No |
+| `LANGSMITH_TRACING` | Enables tracing; defaults to `false` | No |
+| `LANGSMITH_API_KEY` | LangSmith access | Yes |
+| `LANGSMITH_PROJECT` | LangSmith project name | No |
+| `RESQIVO_CHROMA_DIR` | Location of the local ChromaDB index | No |
+
+- Secrets are never committed, logged, returned by the API, or exposed to the frontend.
+- The default CI workflow must pass without any API keys: AI tests use fake chat models and fake embeddings, and tracing stays disabled.
+- Live LLM runs and RAGAS evaluations run manually or in a separate, opt-in workflow.
+
+## 6. Definition of Done for Every Task
 
 Before marking a task complete:
 
@@ -203,6 +263,6 @@ Before marking a task complete:
 6. Confirm no unrelated files or secrets were added.
 7. Stop and wait for review before beginning the next task.
 
-## 5. Initial Priority
+## 7. Next Priority
 
-Start with **Phase 0** and complete the three documentation files. Then implement **Phase 1** only. Do not start RAG, agent orchestration, database integration, or deployment until the earlier foundations and acceptance criteria are complete.
+Tasks 4.0 and 4.2 are complete, and Task 4.1 is complete apart from the outstanding permissions. The next AI task is **Task 4.3 — Grounded question answering**, after the embedding model for real sources is chosen and WHO-01 text is prepared. Outstanding foundation work (Tasks 1.1, 1.4, 2.1, 2.2, 3.1, and 3.2) can proceed independently.

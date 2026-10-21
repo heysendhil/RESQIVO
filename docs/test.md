@@ -94,8 +94,11 @@ Dependencies are split into two files in `backend/`:
 
 | File | Contents | Use |
 |---|---|---|
-| `requirements.txt` | Runtime only: `fastapi`, `pydantic`, `uvicorn[standard]`, `starlette` | Running the API |
+| `requirements.txt` | Runtime only: `fastapi`, `pydantic`, `uvicorn[standard]`, `starlette`, plus the AI stack (`langchain-core`, `langgraph`, `langchain-anthropic`, `langchain-chroma`, `chromadb`, `langsmith`) verified in `docs/dependency-compatibility.md` | Running the API and retrieval |
 | `requirements-dev.txt` | Includes `requirements.txt`, plus `pytest`, `httpx2` (HTTP client for FastAPI's `TestClient`) and `ruff` | Development and testing |
+| `requirements-eval.txt` | Includes `requirements.txt`, plus `ragas` and the pinned `langchain-community` | RAG evaluation only; not installed by CI |
+
+LangGraph requires `websockets<17`, so installing `requirements.txt` resolves `websockets` 16.x. Retrieval tests and commands are described in `docs/rag.md`.
 
 Lower version bounds are the versions tested with the project; upper bounds stop at the next potentially breaking release.
 
@@ -337,3 +340,6 @@ Update this section during implementation. Do not pre-fill results.
 | 2026-10-21 | `13264af` plus uncommitted validation API and frontend changes | `python -m ruff check .` and `python -m ruff format --check .` (Ruff 0.17.1) | Passed: no violations; 23 files already formatted | Run from `backend/` |
 | 2026-10-21 | `13264af` plus uncommitted validation API and frontend changes | `python -m pytest -q` (pytest 9.1.1, Python 3.14.6) | 64 passed, 0 failed, 0 warnings | Adds 9 `/validate` API tests and 3 CORS tests |
 | 2026-10-21 | `13264af` plus uncommitted validation API and frontend changes | `npm run lint`, `npx tsc --noEmit`, `npm run build` (Next.js 16.3.8, Node 24.21.0) | All passed | Run from `frontend/` |
+| 2026-10-21 | `cb38b80` plus uncommitted Task 4.0–4.2 changes | `python -m ruff check .` and `python -m ruff format --check .` (Ruff 0.17.1) | Passed: no violations; 38 files already formatted | After adding the retrieval pipeline |
+| 2026-10-21 | `cb38b80` plus uncommitted Task 4.0–4.2 changes | `python -m pytest -q` (pytest 9.1.1, Python 3.14.6) | 125 passed, 0 failed, 1 warning | Adds 61 offline retrieval tests. Warning: ChromaDB 1.5.9 `DeprecationWarning` for `asyncio.iscoroutinefunction` (removal in Python 3.16) |
+| 2026-10-21 | `cb38b80` plus uncommitted Task 4.0–4.2 changes | `python -m pip check` in the project `.venv` | No broken requirements | After installing `requirements-dev.txt` |

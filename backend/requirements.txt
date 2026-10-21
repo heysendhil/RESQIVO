@@ -7,3 +7,11 @@ uvicorn[standard]>=0.54.0,<0.55
 
 # Installed by FastAPI, which does not cap its version.
 starlette>=1.7.0,<2
+
+# AI stack, verified in docs/dependency-compatibility.md.
+langchain-core>=1.6.7,<2
+langgraph>=1.2.14,<1.3
+langchain-anthropic>=1.7.5,<1.8
+langchain-chroma>=1.1.0,<1.2
+chromadb>=1.5.9,<1.6
+langsmith>=0.14.4,<0.15

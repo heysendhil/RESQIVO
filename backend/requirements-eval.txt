@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Evaluation only; not installed by CI. See docs/dependency-compatibility.md.
+ragas==0.4.3
+# 0.4.2 removed langchain_community.chat_models.vertexai, which ragas 0.4.3 imports.
+langchain-community==0.4.1
