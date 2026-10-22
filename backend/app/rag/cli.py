@@ -16,7 +16,7 @@ from app.rag.config import (
     DEFAULT_SYNTHETIC_FIXTURES_PATH,
     RagSettings,
 )
-from app.rag.embeddings import get_embeddings
+from app.rag.embeddings import EmbeddingModelUnavailableError, get_embeddings
 from app.rag.ingest import load_approved_documents, load_synthetic_documents
 from app.rag.manifest import ManifestError, load_manifest
 from app.rag.store import IngestionError, KnowledgeStore, RetrievalError
@@ -28,9 +28,14 @@ def _store(args: argparse.Namespace) -> KnowledgeStore:
         chroma_dir=Path(args.chroma_dir or environment.chroma_dir),
         collection_name=args.collection or environment.collection_name,
         embedding_provider=args.embedding or environment.embedding_provider,
+        allow_model_download=(
+            args.allow_model_download or environment.allow_model_download
+        ),
     )
     return KnowledgeStore(
-        embeddings=get_embeddings(settings.embedding_provider),
+        embeddings=get_embeddings(
+            settings.embedding_provider, settings.allow_model_download
+        ),
         collection_name=settings.collection_name,
         persist_directory=settings.chroma_dir,
     )
@@ -62,6 +67,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--chroma-dir", help="Overrides RESQIVO_CHROMA_DIR.")
     parser.add_argument("--collection", help="Overrides RESQIVO_CHROMA_COLLECTION.")
     parser.add_argument("--embedding", help="Overrides RESQIVO_EMBEDDING_PROVIDER.")
+    parser.add_argument(
+        "--allow-model-download",
+        action="store_true",
+        help="Allow onnx-minilm to download its model (about 83 MB) if not cached. "
+        "Equivalent to RESQIVO_ALLOW_MODEL_DOWNLOAD=true.",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
     build = commands.add_parser("build", help="Ingest documents into the index.")
@@ -79,7 +90,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.handler(args)
-    except (ManifestError, IngestionError, RetrievalError, ValueError) as exc:
+    except (
+        EmbeddingModelUnavailableError,
+        ManifestError,
+        IngestionError,
+        RetrievalError,
+        ValueError,
+    ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

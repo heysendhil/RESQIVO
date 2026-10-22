@@ -3,6 +3,7 @@
 import hashlib
 import math
 import re
+from pathlib import Path
 
 from langchain_core.embeddings import Embeddings
 
@@ -41,21 +42,54 @@ class HashingEmbeddings(Embeddings):
         return self._embed(text)
 
 
+ALLOW_MODEL_DOWNLOAD_ENV = "RESQIVO_ALLOW_MODEL_DOWNLOAD"
+
+# The files ChromaDB checks before deciding to download the model.
+ONNX_MODEL_FILES = (
+    "config.json",
+    "model.onnx",
+    "special_tokens_map.json",
+    "tokenizer_config.json",
+    "tokenizer.json",
+    "vocab.txt",
+)
+
+
+class EmbeddingModelUnavailableError(Exception):
+    """The embedding model is not cached locally and downloading is not allowed."""
+
+
 class OnnxMiniLMEmbeddings(Embeddings):
     """ChromaDB's bundled all-MiniLM-L6-v2 (ONNX) model, run locally on CPU.
 
-    Opt-in only. On first use ChromaDB downloads the model archive (verified by
-    SHA-256) into ~/.cache/chroma/onnx_models; text is not sent to any external
-    service. Never used by the automated tests.
+    Opt-in only. The model must already be in ChromaDB's cache
+    (~/.cache/chroma/onnx_models) unless allow_download is true, in which case
+    ChromaDB downloads it from its pinned source and verifies its SHA-256.
+    Nothing is checked or loaded until the first embedding request. Text is not
+    sent to any external service.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, allow_download: bool = False) -> None:
+        self._allow_download = allow_download
         self._function = None
 
     def _get_function(self):
         if self._function is None:
             from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
+            model_dir = (
+                Path(ONNXMiniLM_L6_V2.DOWNLOAD_PATH)
+                / ONNXMiniLM_L6_V2.EXTRACTED_FOLDER_NAME
+            )
+            cached = all((model_dir / name).is_file() for name in ONNX_MODEL_FILES)
+            if not cached and not self._allow_download:
+                raise EmbeddingModelUnavailableError(
+                    f"The onnx-minilm model is not in the local cache at {model_dir}. "
+                    f"To download it (about 83 MB, SHA-256 verified by ChromaDB), set "
+                    f"{ALLOW_MODEL_DOWNLOAD_ENV}=true or pass --allow-model-download "
+                    "to the CLI. Alternatively, set HOME to a directory that already "
+                    "contains the cached model, or use the hashing provider."
+                )
             self._function = ONNXMiniLM_L6_V2()
         return self._function
 
@@ -66,18 +100,16 @@ class OnnxMiniLMEmbeddings(Embeddings):
         return self.embed_documents([text])[0]
 
 
-_PROVIDERS = {
-    "hashing": HashingEmbeddings,
-    "onnx-minilm": OnnxMiniLMEmbeddings,
-}
+_PROVIDERS = ("hashing", "onnx-minilm")
 
 
-def get_embeddings(provider: str) -> Embeddings:
-    try:
-        factory = _PROVIDERS[provider]
-    except KeyError:
-        raise ValueError(
-            f"Unknown embedding provider {provider!r}. "
-            f"Choose one of: {', '.join(sorted(_PROVIDERS))}."
-        ) from None
-    return factory()
+def get_embeddings(provider: str, allow_model_download: bool = False) -> Embeddings:
+    """Return the named provider. allow_model_download applies to onnx-minilm only."""
+    if provider == "hashing":
+        return HashingEmbeddings()
+    if provider == "onnx-minilm":
+        return OnnxMiniLMEmbeddings(allow_download=allow_model_download)
+    raise ValueError(
+        f"Unknown embedding provider {provider!r}. "
+        f"Choose one of: {', '.join(_PROVIDERS)}."
+    )

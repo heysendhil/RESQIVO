@@ -27,6 +27,7 @@ class RagSettings:
     chroma_dir: Path
     collection_name: str
     embedding_provider: str
+    allow_model_download: bool = False
 
     def __post_init__(self) -> None:
         if not _COLLECTION_NAME.match(self.collection_name):
@@ -45,4 +46,21 @@ class RagSettings:
             embedding_provider=(
                 environ.get("RESQIVO_EMBEDDING_PROVIDER") or DEFAULT_EMBEDDING_PROVIDER
             ),
+            allow_model_download=_parse_flag(
+                "RESQIVO_ALLOW_MODEL_DOWNLOAD",
+                environ.get("RESQIVO_ALLOW_MODEL_DOWNLOAD", ""),
+            ),
         )
+
+
+_TRUE = {"1", "true", "yes"}
+_FALSE = {"", "0", "false", "no"}
+
+
+def _parse_flag(name: str, value: str) -> bool:
+    normalised = value.strip().lower()
+    if normalised in _TRUE:
+        return True
+    if normalised in _FALSE:
+        return False
+    raise ValueError(f"{name} must be one of: true, false, 1, 0, yes, no.")

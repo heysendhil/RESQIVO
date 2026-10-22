@@ -14,6 +14,7 @@ from langchain_core.embeddings import Embeddings
 
 from app.rag.chunking import chunk_document
 from app.rag.documents import KnowledgeDocument
+from app.rag.embeddings import EmbeddingModelUnavailableError
 
 MAX_QUERY_CHARS = 1000
 MAX_RESULTS = 20
@@ -149,6 +150,9 @@ class KnowledgeStore:
             results = self._vectorstore.similarity_search_with_score(
                 query, k=min(k, total)
             )
+        except EmbeddingModelUnavailableError:
+            # A configuration problem with an actionable message, not an outage.
+            raise
         except Exception as exc:
             # The query text is deliberately left out of the message.
             raise RetrievalError("Retrieval failed.") from exc
