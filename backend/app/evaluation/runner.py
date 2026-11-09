@@ -20,7 +20,7 @@ from app.workflow.schemas import MAX_CORRECTION_ATTEMPTS
 
 REPORT_LIMITATIONS = [
     "Offline tracks use scripted model outputs: they evaluate RESQIVO's "
-    "guardrails, validation and citation handling, not Claude's quality.",
+    "guardrails, validation and citation handling, not the model's quality.",
     "Expected outcomes were written by an AI assistant from the documented rules "
     "and have not been independently reviewed.",
     "Semantic grounding needs human review or an LLM judge; it is not scored.",

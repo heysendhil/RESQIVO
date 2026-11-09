@@ -16,7 +16,7 @@ There are five tracks. Each produces its own metrics, and **the tracks are never
 | `plan_drafting` | Validator outcomes of drafts, unresolved violations, unknown references, over-allocation, inventory preservation, insufficient information, missing evidence | 16 cases | Yes |
 | `tool_calling` | Tool selection for the stage, argument validity, execution, rejection of unauthorized, malformed and repeated calls, limits, prompt injection, final answers without tools | 17 cases | Yes |
 
-**Offline tracks evaluate RESQIVO, not Claude.** In the grounding, drafting and tool-calling tracks, a scripted model returns fixed outputs. These include good, bad and adversarial outputs. The real services and workflows process those outputs: `QuestionAnsweringService`, `DraftPlanWorkflow`, `ReviewWorkflow` with tool calling, the validator, the allowlist and the limits. The results therefore show whether RESQIVO's safeguards, validation and citation handling behave as documented. **They say nothing about how well Claude answers, drafts or chooses tools.** That needs the supervised live procedure in section 7, which has not been run.
+**Offline tracks evaluate RESQIVO, not the model.** In the grounding, drafting and tool-calling tracks, a scripted model returns fixed outputs. These include good, bad and adversarial outputs. The real services and workflows process those outputs: `QuestionAnsweringService`, `DraftPlanWorkflow`, `ReviewWorkflow` with tool calling, the validator, the allowlist and the limits. The results therefore show whether RESQIVO's safeguards, validation and citation handling behave as documented. **They say nothing about how well the model answers, drafts or chooses tools.** That needs the supervised live procedure in section 7, which has not been run.
 
 **A plan that passes the validator is not proven safe.** `draft_valid` and `drafts_passing_validator` mean only that RESQIVO's configured rules pass.
 
@@ -135,7 +135,7 @@ python -m pytest -q tests/test_evaluation.py tests/test_evaluation_metrics.py
 
 **Offline guarantees.** The runner:
 - blocks network connections;
-- removes `ANTHROPIC_API_KEY` from its own process;
+- removes the model API keys (`GOOGLE_API_KEY`, `GEMINI_API_KEY` and the old `ANTHROPIC_API_KEY`) from its own process;
 - forces the LangSmith tracing variables to `false`;
 - never downloads an embedding model (an uncached provider is reported as skipped);
 - builds every index in memory.
@@ -246,8 +246,8 @@ The v2 re-run gave identical tool-calling metrics. TCL-015's expected final-answ
 
 A live evaluation would run the same cases with Claude in place of the scripted outputs. The guardrail and handling metrics would stay the same, while the scripted-output rates would become real model measurements. It is **not implemented as an automatic step**, and no live request has been made. It would require:
 
-1. a deliberate decision to spend API credit, with `ANTHROPIC_API_KEY` set only in the operator's shell;
-2. a separate runner that builds `ChatAnthropic` instead of `ScriptedChatModel`, records the model ID, date and dataset hash, and never runs in CI;
+1. a deliberate decision to spend API credit, with `GOOGLE_API_KEY` set only in the operator's shell;
+2. a separate runner that builds the Gemini client (`build_chat_model`) instead of `ScriptedChatModel`, records the model ID, date and dataset hash, and never runs in CI;
 3. live questions that use the dataset's inputs while ignoring its scripted outputs;
 4. human review of every answered response for semantic support, or an LLM judge whose own reliability is measured;
 5. keeping `LANGSMITH_TRACING` off unless tracing is explicitly wanted.

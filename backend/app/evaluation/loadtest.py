@@ -4,7 +4,7 @@ The fake model's replies are derived from each request's own prompt, so a
 response can be checked against the request that produced it: answers echo the
 request's passage, drafts allocate the request's own stock, and corrections
 clamp the request's own allocations. An optional fixed delay simulates a slow
-model; it says nothing about real Claude latency.
+model; it says nothing about real model latency.
 
 install_offline_overrides() replaces the per-request service and workflow
 factories in app.main, so every request builds fresh components, as in

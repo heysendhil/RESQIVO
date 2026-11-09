@@ -127,16 +127,21 @@ Events carry only counts, booleans, durations, fixed reason codes, violation cod
 
 ## 7. Configuration
 
-Python logging is not configured by the application. Events appear only if the deployment configures a handler for the `resqivo` logger, for example:
+Python logging is not configured by the application. Events appear only if the deployment configures a handler for the `resqivo` logger.
 
-```python
-logging.basicConfig(level=logging.INFO)
+For local runs, `backend/logging.json` does this. It prints every RESQIVO event with a timestamp, and silences uvicorn's per-request access lines, because `request.end` already records each request in more detail:
+
+```bash
+cd backend
+set -a; source .env; set +a
+../.venv/bin/python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8002 \
+  --timeout-graceful-shutdown 5 --log-config logging.json
 ```
 
 ## 8. Limitations
 
 - **Metrics are per process and in memory.** There is no export endpoint, and counters reset on restart; aggregation depends on collecting the log events.
-- **Model-call counts** cover calls made by RESQIVO code. Retries inside the Anthropic client (`max_retries=2`) are not visible. Token usage and cost are not recorded.
+- **Model-call counts** cover calls made by RESQIVO code. Retries inside the Gemini client (up to 2 attempts per call) are not visible; the `event=model.failed` line reports only the final outcome. Token usage and cost are not recorded.
 - **Timing:** request durations are measured in the middleware and include dependency construction. There are no per-node timings.
 - **Preflight requests:** CORS preflight (`OPTIONS`) requests are answered by the CORS middleware and produce no events.
 - **Duplicate request IDs:** a client can reuse the same valid ID for several requests. IDs are for correlation, not authentication.

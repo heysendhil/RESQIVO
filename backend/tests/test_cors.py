@@ -23,6 +23,16 @@ def test_local_frontend_origin_is_allowed() -> None:
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
 
 
+def test_resqivo_localhost_origin_is_allowed() -> None:
+    response = preflight("http://resqivo.localhost:3000")
+
+    assert response.status_code == 200
+    assert (
+        response.headers["access-control-allow-origin"]
+        == "http://resqivo.localhost:3000"
+    )
+
+
 def test_unlisted_origin_is_not_allowed() -> None:
     response = preflight("https://example.com")
 

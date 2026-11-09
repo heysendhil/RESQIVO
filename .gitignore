@@ -11,6 +11,7 @@ __pycache__/
 knowledge/local/
 knowledge/**/*.pdf
 data/index/
+data/incidents/
 
 # Node
 node_modules/

@@ -373,7 +373,7 @@ def test_model_exception_is_masked(caplog):
 
 
 def test_model_refusal_is_a_model_error():
-    refusal = AIMessage(content="", response_metadata={"stop_reason": "refusal"})
+    refusal = AIMessage(content="", response_metadata={"finish_reason": "SAFETY"})
 
     with pytest.raises(ModelResponseError):
         run(DraftModel(draft=refusal))

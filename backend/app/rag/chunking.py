@@ -38,14 +38,25 @@ def chunk_document(
     max_words: int = DEFAULT_CHUNK_WORDS,
     overlap_words: int = DEFAULT_OVERLAP_WORDS,
 ) -> list[Chunk]:
+    """Chunk a document. A document with pages is chunked page by page, so no
+    chunk spans two pages; chunk indexes still run through the whole document."""
+    if document.pages:
+        windows = [
+            (page.page_number, text)
+            for page in document.pages
+            for text in chunk_text(page.text, max_words, overlap_words)
+        ]
+    else:
+        windows = [
+            (None, text) for text in chunk_text(document.text, max_words, overlap_words)
+        ]
     return [
         Chunk(
             chunk_id=f"{document.source_id}:{index:04d}",
             chunk_index=index,
             text=text,
             document=document,
+            page=page,
         )
-        for index, text in enumerate(
-            chunk_text(document.text, max_words, overlap_words)
-        )
+        for index, (page, text) in enumerate(windows)
     ]

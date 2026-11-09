@@ -53,6 +53,7 @@ from app.qa.errors import (
     ToolCallLimitError,
 )
 from app.qa.prompt import INSUFFICIENT_EVIDENCE_MARKER
+from app.qa.replies import unusable_reply
 from app.qa.schemas import AnswerResponse
 from app.qa.service import QuestionAnsweringService, grounded_citations
 from app.rag.embeddings import EmbeddingModelUnavailableError
@@ -247,11 +248,10 @@ class PlanWorkflowBase:
         except Exception as exc:
             record_model_call("tool_turn", ok=False)
             raise ModelResponseError("The language model request failed.") from exc
-        metadata = getattr(reply, "response_metadata", None) or {}
-        refused = metadata.get("stop_reason") == "refusal"
-        record_model_call("tool_turn", ok=not refused)
-        if refused:
-            raise ModelResponseError("The language model declined to answer.")
+        blocked = unusable_reply(reply)
+        record_model_call("tool_turn", ok=not blocked)
+        if blocked:
+            raise ModelResponseError("The language model did not complete a reply.")
         calls = requested_calls(reply)
         log_event(
             logger,
@@ -380,8 +380,10 @@ class PlanWorkflowBase:
             reply = self._model.invoke(
                 build_correction_messages(plan, state["validation"])
             )
-            record_model_call("correction", ok=True)
-            text = (getattr(reply, "text", "") or "").strip()
+            blocked = unusable_reply(reply)
+            record_model_call("correction", ok=not blocked)
+            # A blocked or truncated reply is a failed attempt, never a correction.
+            text = "" if blocked else (getattr(reply, "text", "") or "").strip()
             corrected = parse_corrected_plan(text, state["plan"])
         except Exception:
             # A failed attempt still counts; the last validated plan is kept.

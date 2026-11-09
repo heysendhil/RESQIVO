@@ -19,9 +19,9 @@
 Inspection before the change showed:
 
 - **No request-body size limit.** FastAPI, Starlette and uvicorn do not cap bodies. `POST /validate` and the `plan` in `/review` have **no list-length limits**. `/draft-plan` has its own limits (100 resources, 100 shelters, 200 needs, 10 constraints), and questions are limited to 1,000 characters.
-- **No overall request time limit.** Each Claude call has a 60 s client timeout and up to 2 retries (`app/qa/llm.py`). A request can make up to 4 sequential model calls in fixed mode (answer, draft, two corrections), or up to 9 tool turns plus the draft and corrections in tool-calling mode.
+- **No overall request time limit.** Each model call has a client timeout with automatic retries (`app/qa/llm.py`). When this was measured with Claude: 60 s and up to 2 retries. Since 2026-10-23 with Gemini: 90 s and 1 retry. A request can make up to 4 sequential model calls in fixed mode (answer, draft, two corrections), or up to 9 tool turns plus the draft and corrections in tool-calling mode.
 - **Concurrency-relevant state.**
-  - Workflows, services and the Claude client are built per request (`get_*` dependencies).
+  - Workflows, services and the model client are built per request (`get_*` dependencies).
   - The only shared mutable state is the metrics registry, which is lock-protected, and per-request context variables (request ID, run statistics, deadline).
   - LangGraph runs a graph's nodes on the calling thread with its context.
   - Synchronous endpoints run in Starlette's thread pool.
@@ -45,7 +45,7 @@ Inspection before the change showed:
 | `RESQIVO_REQUEST_TIMEOUT_SECONDS` | 120 | 1 – 600 | Once the budget is used, the next retrieval or model call is not started and the request returns **504** `{"detail": "The request did not complete in time."}` |
 
 - **Cooperative.** The deadline is checked before every retrieval and every model call: answer, draft, correction, tool turn and tool-requested search.
-- **It cannot interrupt a call already in progress.** That call is bounded by the Claude client's own 60 s timeout (and retries), so the worst case is the budget plus one in-flight call.
+- **It cannot interrupt a call already in progress.** That call is bounded by the model client's own timeout (90 s per attempt with Gemini) and retries, so the worst case is the budget plus one in-flight call.
 - **A timeout is not counted as a failed correction.** The check sits outside the correction step's exception handler, so the two-correction limit and its semantics are unchanged.
 
 **Invalid limit settings fail closed:** every endpoint, including `/health`, returns 503 until the settings are fixed. Tests cover this.

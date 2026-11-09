@@ -78,7 +78,7 @@ Not yet implemented: any LLM integration, RAG, tool calling, agent orchestration
 
 - **Frontend:** Next.js, TypeScript, and Tailwind CSS; responsive web interface with optional Progressive Web App (PWA) support.
 - **Backend API:** Python and FastAPI with Pydantic request/response models.
-- **LLM:** Anthropic Claude through `langchain-anthropic`. The model is configured by environment variable.
+- **LLM:** Google Gemini through `langchain-google-genai` (default `gemini-3.8-flash`), replacing Anthropic Claude on 2026-10-23 (`docs/model-provider.md`). The model is configured by environment variable.
 - **LLM and tool integration:** LangChain.
 - **Agent orchestration:** LangGraph. This replaces the previously proposed CrewAI/CrewAI Flow.
 - **Knowledge retrieval:** RAG with ChromaDB as the vector store.
@@ -163,5 +163,5 @@ The initial prototype is successful when a user can:
 - The first release is a responsive web application; native mobile applications are out of scope.
 - AI recommendations are advisory and are not directly executed.
 - The first supported scenarios and exact resource types will be selected during planning.
-- **Decided:** Anthropic Claude as the LLM provider; LangGraph, LangChain, ChromaDB, RAGAS, and LangSmith as the AI stack; NDMA India, WHO, and UNDRR as knowledge publishers.
+- **Decided:** Anthropic Claude as the LLM provider (changed to Google Gemini on 2026-10-23); LangGraph, LangChain, ChromaDB, RAGAS, and LangSmith as the AI stack; NDMA India, WHO, and UNDRR as knowledge publishers.
 - **Open:** the specific guidance documents, the embedding model, the maximum number of correction attempts, whether RAGAS runs on Python 3.14 or in a separate evaluation environment, and the hosting, authentication, and final deployment architecture.

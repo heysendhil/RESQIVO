@@ -245,7 +245,7 @@ def test_cli_runs_offline_without_credentials_or_models(tmp_path):
     output = tmp_path / "report.json"
     env = {
         **os.environ,
-        "ANTHROPIC_API_KEY": "sk-must-not-be-used",
+        "GOOGLE_API_KEY": "sk-must-not-be-used",
         "HOME": str(tmp_path),  # no cached embedding models
         "LANGSMITH_TRACING": "true",
     }

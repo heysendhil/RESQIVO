@@ -1,8 +1,9 @@
 """Loading documents for ingestion. Nothing is downloaded.
 
 Real sources are read only for manifest entries with include_in_index=true, from
-plain-text files that a maintainer has prepared locally from the official
-document. Synthetic fixtures are read from a clearly labelled JSON file.
+a local copy of the official document: a prepared plain-text file
+(<SOURCE-ID>.txt) or the PDF itself (<SOURCE-ID>.pdf). Synthetic fixtures are
+read from a clearly labelled JSON file.
 """
 
 import json
@@ -11,7 +12,8 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.rag.documents import KnowledgeDocument
-from app.rag.manifest import SourceManifest, eligible_sources
+from app.rag.manifest import SourceEntry, SourceManifest, eligible_sources
+from app.rag.pdf import extract_pdf_text
 from app.rag.store import IngestionError
 
 SYNTHETIC_PUBLISHER = "RESQIVO synthetic test fixture (not an official source)"
@@ -22,29 +24,57 @@ SYNTHETIC_URL_PREFIX = "urn:resqivo:synthetic:"
 def load_approved_documents(
     manifest: SourceManifest, local_dir: Path
 ) -> list[KnowledgeDocument]:
-    """Read local text for each approved source. Unapproved files are never read."""
+    """Read the local copy of each approved source. Unapproved files are never read."""
     documents = []
     for source in eligible_sources(manifest):
-        path = local_dir / f"{source.id}.txt"
-        if not path.is_file():
+        text_path = local_dir / f"{source.id}.txt"
+        pdf_path = local_dir / f"{source.id}.pdf"
+        if text_path.is_file() and pdf_path.is_file():
             raise IngestionError(
-                f"Approved source {source.id} has no local text file at {path}. "
-                "Prepare it from the official document; see docs/rag.md."
+                f"Approved source {source.id} has both {text_path.name} and "
+                f"{pdf_path.name} in {local_dir}. Keep only one."
             )
-        text = path.read_text(encoding="utf-8")
-        if not text.strip():
-            raise IngestionError(f"Local text file for {source.id} is empty: {path}")
-        documents.append(
-            KnowledgeDocument(
-                source_id=source.id,
-                title=source.title,
-                publisher=source.publisher,
-                url=source.source_url,
-                text=text,
-                synthetic=False,
+        if pdf_path.is_file():
+            documents.append(_pdf_document(source, pdf_path))
+        elif text_path.is_file():
+            documents.append(_text_document(source, text_path))
+        else:
+            raise IngestionError(
+                f"Approved source {source.id} has no local text file at {text_path} "
+                f"or PDF at {pdf_path}. Save the official document there; see "
+                "docs/rag.md."
             )
-        )
     return documents
+
+
+def _text_document(source: SourceEntry, path: Path) -> KnowledgeDocument:
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        raise IngestionError(f"Local text file for {source.id} is empty: {path}")
+    return KnowledgeDocument(
+        source_id=source.id,
+        title=source.title,
+        publisher=source.publisher,
+        url=source.source_url,
+        text=text,
+        synthetic=False,
+        source_file=path.name,
+    )
+
+
+def _pdf_document(source: SourceEntry, path: Path) -> KnowledgeDocument:
+    extracted = extract_pdf_text(path)
+    return KnowledgeDocument(
+        source_id=source.id,
+        title=source.title,
+        publisher=source.publisher,
+        url=source.source_url,
+        text="\n\n".join(page.text for page in extracted.pages),
+        synthetic=False,
+        source_file=path.name,
+        pages=extracted.pages,
+        page_count=extracted.page_count,
+    )
 
 
 class SyntheticPassage(BaseModel):

@@ -246,7 +246,7 @@ The existing handlers and fixed messages are used. Stack traces, prompts and sec
 | Status | `detail` | Cause |
 |---|---|---|
 | 422 | FastAPI validation error | Malformed request |
-| 503 | `Question answering is not configured.` | No `ANTHROPIC_API_KEY`, invalid settings, or the embedding model is not available |
+| 503 | `Question answering is not configured.` | No `GOOGLE_API_KEY`, invalid settings, or the embedding model is not available |
 | 503 | `Knowledge retrieval is unavailable.` | The vector store failed. No draft is made, and the response never claims guidance was consulted. |
 | 502 | `The language model did not return a usable answer.` | The model call failed or was refused, or the first draft was unusable |
 | 413 | `Request body too large.` | Body over `RESQIVO_MAX_BODY_BYTES` (default 1 MiB; `docs/stress-testing.md` section 2.1) |
@@ -309,7 +309,7 @@ The reused nodes log as in section 6, without the request ID. Scenario text, nam
 - log content and tracing;
 - request validation, error masking and missing credentials;
 - regression checks for `/health`, `/validate`, `/answer` and `/review`;
-- API startup without loading LangGraph, ChromaDB or the Claude client.
+- API startup without loading LangGraph, ChromaDB or the model client.
 
 ### 9.9 Known limitations
 
@@ -323,7 +323,7 @@ The reused nodes log as in section 6, without the request ID. Scenario text, nam
 
 ## 10. Model-Initiated Tool Calling (Task 5.3)
 
-**Status:** implemented and tested offline with a scripted fake model. Binding the real tools to `ChatAnthropic` was checked offline: the request payload was built without being sent. **No live Claude request has been made**, so whether `claude-opus-5-5` requests tools sensibly is unverified. **The mode is off by default.** With `RESQIVO_TOOL_CALLING` unset or `false`, `/review` and `/draft-plan` behave exactly as described in sections 1–9.
+**Status:** implemented and tested offline with a scripted fake model. Binding the real tools to `ChatGoogleGenerativeAI` (Gemini; `docs/model-provider.md` section 5) was checked offline with the SDK call mocked: nothing was sent. **No live model request has been made**, so whether `gemini-3.8-flash` requests tools sensibly is unverified. **The mode is off by default.** With `RESQIVO_TOOL_CALLING` unset or `false`, `/review` and `/draft-plan` behave exactly as described in sections 1–9.
 
 Code is in `backend/app/workflow/tool_calling.py` (policy, prompt and execution) and `backend/app/workflow/graph.py` (graph nodes). No dependency was added or changed.
 
@@ -387,7 +387,7 @@ The existing handlers and fixed messages are used. Responses never include stack
 
 | Situation | Result |
 |---|---|
-| Missing `ANTHROPIC_API_KEY` or invalid tool-calling settings | 503 `Question answering is not configured.` |
+| Missing `GOOGLE_API_KEY` or invalid tool-calling settings | 503 `Question answering is not configured.` |
 | `search_guidance` cannot reach the store | 503 `Knowledge retrieval is unavailable.` (`RetrievalUnavailableError`) |
 | Embedding model unavailable | 503 `Question answering is not configured.` |
 | Knowledge base empty | The loop stops, with no further model call. The answer is `insufficient_evidence` / `knowledge_base_empty`. |
@@ -452,7 +452,7 @@ The `resqivo.workflow` logger records:
 - validator authority and attempts to invent stock or capacity;
 - citation labels across searches, and fabricated or distant labels;
 - tracing disabled and log content;
-- the API factories following configuration, `bind_tools` on the real `ChatAnthropic` (payload built offline, not sent), error masking for `/review` and `/draft-plan`, and lazy startup.
+- the API factories following configuration, `bind_tools` on the real `ChatGoogleGenerativeAI` (request built offline, not sent), error masking for `/review` and `/draft-plan`, and lazy startup.
 
 ### 10.11 Known limitations
 

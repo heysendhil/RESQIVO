@@ -94,7 +94,7 @@ Dependencies are split into two files in `backend/`:
 
 | File | Contents | Use |
 |---|---|---|
-| `requirements.txt` | Runtime only: `fastapi`, `pydantic`, `uvicorn[standard]`, `starlette`, plus the AI stack (`langchain-core`, `langgraph`, `langchain-anthropic`, `langchain-chroma`, `chromadb`, `langsmith`) verified in `docs/dependency-compatibility.md` | Running the API and retrieval |
+| `requirements.txt` | Runtime only: `fastapi`, `pydantic`, `uvicorn[standard]`, `starlette`, plus the AI stack (`langchain-core`, `langgraph`, `langchain-google-genai`, `google-genai`, `langchain-chroma`, `chromadb`, `langsmith`) verified in `docs/dependency-compatibility.md` | Running the API and retrieval |
 | `requirements-dev.txt` | Includes `requirements.txt`, plus `pytest`, `httpx2` (HTTP client for FastAPI's `TestClient`) and `ruff` | Development and testing |
 | `requirements-eval.txt` | Includes `requirements.txt`, plus `ragas` and the pinned `langchain-community` | RAG evaluation only; not installed by CI |
 
@@ -184,26 +184,35 @@ Tests: `backend/tests/test_validate_api.py` (endpoint behaviour) and `backend/te
 
 ### 3.8 Frontend
 
-The Next.js app in `frontend/` (TypeScript, Tailwind CSS) shows two synthetic sample plans (`frontend/lib/sample-plans.ts`) and sends the selected plan to `POST /validate`. The displayed Valid/Invalid status and violations come from the backend response. `frontend/lib/api.ts` makes the request, checks the response shape, and reports an unreachable API or an unexpected response as an error.
+The Next.js dashboard in `frontend/` (TypeScript, Tailwind CSS) calls all five backend endpoints:
+
+- `GET /health` (status badge);
+- `POST /validate`;
+- `POST /draft-plan`;
+- `POST /review`;
+- `POST /answer`.
+
+Request and response types in `frontend/lib/api.ts` mirror the backend's Pydantic models, and each response is shape-checked. HTTP 413, 422, 502, 503 and 504 and network failures map to fixed messages; 422 also lists the field errors. AI output is labelled separately from **Deterministic validation (authoritative)**, drafts carry **"Draft — requires human review"**, and citations are untrusted reference material (only `http(s)` URLs become links). Details, setup, environment variables and manual verification steps are in `frontend/README.md`.
 
 To run it, with the backend running on port 8000:
 
 ```bash
 cd frontend
 npm install
-npm run dev        # http://localhost:3000
+npm run dev        # http://localhost:3000 (fetches the Geist font from Google; see below)
 ```
 
-**API URL:** `NEXT_PUBLIC_API_BASE_URL` sets the backend base URL and defaults to `http://127.0.0.1:8000`. To override it, copy `frontend/.env.example` to `frontend/.env.local` and change the value. Next.js inlines it into the browser bundle at build time, so it must never contain a secret. `.env.local` is ignored by Git.
+**API URL:** `NEXT_PUBLIC_API_BASE_URL` sets the backend base URL and defaults to `http://127.0.0.1:8000`. To override it, copy `frontend/.env.example` to `frontend/.env.local` and change the value. Next.js inlines it into the browser bundle at build time, so it must never contain a secret. `.env.local` is ignored by Git. The frontend holds no API keys. Without `GOOGLE_API_KEY` on the backend, the AI endpoints return 503, and the UI says so while validation keeps working.
 
-**CORS:** because the frontend and API are on different origins, the backend allows cross-origin requests only from `http://localhost:3000` and `http://127.0.0.1:3000`, only for `GET` and `POST`, and only the `Content-Type` request header. A hosted deployment must add its frontend origin explicitly to `ALLOWED_ORIGINS` in `backend/app/main.py`; requests from any other origin are refused.
+**CORS:** because the frontend and API are on different origins, the backend allows cross-origin requests only from `http://localhost:3000`, `http://127.0.0.1:3000` and `http://resqivo.localhost:3000` (a loopback alias), only for `GET` and `POST`, and only the `Content-Type` request header. A hosted deployment must add its frontend origin explicitly to `ALLOWED_ORIGINS` in `backend/app/main.py`; requests from any other origin are refused. `X-Request-ID` is not exposed to the browser, so the UI shows a request ID only for `/draft-plan`, where it is in the response body.
 
 Frontend checks, from `frontend/` (the CI workflow runs backend checks only):
 
 ```bash
+npm test           # Vitest 2.1.9 + React Testing Library + jsdom; fetch is stubbed, no backend or model
 npm run lint       # ESLint
-npx tsc --noEmit   # type check (no package script; uses the installed TypeScript)
-npm run build      # production build, which also type-checks
+npx tsc --noEmit   # type check
+npm run build      # production build; downloads the Geist font via next/font/google
 ```
 
 ## 4. Domain and Constraint Test Cases
@@ -382,3 +391,14 @@ Update this section during implementation. Do not pre-fill results.
 | 2026-10-22 | `8894695` plus uncommitted changes | `python -m pytest -q` with the same variables unset | 535 passed, 0 failed, 1 warning | Adds 39 tests; all 496 earlier tests unchanged and passing. Same ChromaDB warning |
 | 2026-10-22 | `8894695` plus uncommitted changes | `python -m ruff check . ../scripts`, `python -m ruff format --check . ../scripts` (Ruff 0.17.1), `python -m pip check` | Passed: no violations; 84 files already formatted; no broken requirements | No dependency changes |
 | 2026-10-22 | `8894695` plus uncommitted changes | `python ../scripts/benchmark.py` (200 requests per endpoint, concurrency 8, 0 ms fake model) and `--concurrency 16 --delay-ms 50` | Exit 0 for both; 0 failed requests | Offline, in-process; results in `docs/stress-testing.md` section 4.1. Not a prediction of live latency |
+\n
+| 2026-10-22 | `8894695` plus uncommitted changes | Frontend `npm test` (Vitest 2.1.9, jsdom 30.1.3, Node 24.21.0) | 4 files, 64 passed, 0 failed | `fetch` stubbed; no backend, model or network. Covers the API client and error mapping, loading and error states, safety labels, citation handling and workspace conversion |
+| 2026-10-22 | `8894695` plus uncommitted changes | Frontend `npm run lint` (ESLint 9.39.5) and `npx tsc --noEmit` (TypeScript 5.9.3) | Passed: no lint problems; tsc exit 0 | — |
+| 2026-10-22 | `8894695` plus uncommitted changes | Frontend `npm run build` and `npm run dev` | **Not run** | Both download the Geist font from Google via `next/font/google`; skipped at the user's request |
+| 2026-10-22 | `8894695` plus uncommitted changes | Backend `python -m pytest -q` after frontend integration, with the usual variables unset | 535 passed, 0 failed, 1 warning | No backend files changed |
+| 2026-10-23 | `8894695` plus uncommitted changes | Backend `python -m pytest -q` after the Gemini migration, with `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `RESQIVO_LLM_MODEL`, `LANGSMITH_TRACING`, `RESQIVO_ALLOW_MODEL_DOWNLOAD`, `RESQIVO_TOOL_CALLING` and `RESQIVO_MAX_TOOL_CALLS` unset | 575 passed, 0 failed, 2 warnings | 51 Gemini provider tests using the real `ChatGoogleGenerativeAI` with the SDK call mocked. Warnings: the ChromaDB deprecation, plus a `google-genai` Python 3.17 `DeprecationWarning`. No live Gemini request |
+| 2026-10-23 | `8894695` plus uncommitted changes | `python -m ruff check . ../scripts`, `python -m ruff format --check . ../scripts` (Ruff 0.17.1), `python -m pip check` | Passed: no violations; 85 files already formatted; no broken requirements | `langchain-google-genai` 4.4.0 and `google-genai` 2.29.0 installed; `langchain-anthropic` and `anthropic` uninstalled |
+| 2026-10-23 | `8894695` plus uncommitted changes | Frontend `npm test`, `npm run lint`, `npx tsc --noEmit` | 64 passed; lint clean; tsc exit 0 | Frontend source unchanged by the migration |
+| 2026-10-23 | `8894695` plus uncommitted changes | Frontend `npm test`, `npm run lint`, `npx tsc --noEmit` after adding the disaster-location field (sample locations and an opt-in "Use my current location") | 79 passed (15 new location tests); lint clean; tsc exit 0 | Geolocation mocked; no external geocoding; backend unchanged |
+| 2026-10-23 | `8894695` plus uncommitted changes | Frontend `npm test`, `npm run lint`, `npx tsc --noEmit`, `npm run build` after the operations-dashboard redesign | 99 passed (20 new); lint clean; tsc exit 0; build succeeded (static `/`) | The build downloaded the Geist font via `next/font/google`, the existing behaviour, run at the user's request. No new packages; backend unchanged |
+| 2026-10-23 | `8894695` plus uncommitted changes | Backend `python -m pytest -q`, with the model keys, `RESQIVO_LLM_MODEL` and the usual variables unset, after adding metadata-only failure diagnostics and changing the Gemini timeout to 90 s with 2 attempts | 587 passed, 0 failed, 2 warnings | Triggered by a live `/draft-plan` 502, diagnosed from the log as Google HTTP 504 (`DEADLINE_EXCEEDED`) after 3 x 60 s attempts. Ruff lint and format clean |

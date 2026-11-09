@@ -4,7 +4,9 @@ from dataclasses import dataclass
 
 from app.qa.errors import QAConfigurationError
 
-DEFAULT_LLM_MODEL = "claude-opus-5-5"
+# Stable Gemini model with function calling and structured outputs
+# (ai.google.dev/gemini-api/docs/models, checked 2026-10-23).
+DEFAULT_LLM_MODEL = "gemini-3.8-flash"
 DEFAULT_TOP_K = 4
 # Cosine distance: 0 is identical, 1 is unrelated (orthogonal), 2 is opposite.
 # Passages farther than this are not shown to the model. Not yet calibrated
@@ -30,6 +32,13 @@ class QASettings:
     def __post_init__(self) -> None:
         if not self.llm_model.strip():
             raise QAConfigurationError("RESQIVO_LLM_MODEL must not be empty.")
+        # The provider is Gemini: reject other providers' model names (for example
+        # a leftover claude-* value) as a configuration error, before any request.
+        if not self.llm_model.removeprefix("models/").startswith("gemini-"):
+            raise QAConfigurationError(
+                "RESQIVO_LLM_MODEL must be a Gemini model ID, such as "
+                f"{DEFAULT_LLM_MODEL}."
+            )
         if not 1 <= self.top_k <= 20:
             raise QAConfigurationError("RESQIVO_QA_TOP_K must be between 1 and 20.")
         if not 0.0 < self.max_distance <= 2.0:

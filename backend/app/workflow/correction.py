@@ -70,3 +70,32 @@ def parse_corrected_plan(
         allocations=allocations,
         shelters=original.shelters,
     )
+
+
+def diagnose_allocations_text(text: str) -> str:
+    """Why text is or is not a usable allocations object, as a short reason code
+    with field paths only (no values), for logs."""
+    if not text.strip():
+        return "empty_reply"
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return "no_json_object"
+    try:
+        data = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return "invalid_json"
+    if not isinstance(data, dict) or "allocations" not in data:
+        return "missing_allocations"
+    items = data["allocations"]
+    if not isinstance(items, list):
+        return "allocations_not_a_list"
+    if not items:
+        return "empty_allocations"
+    for index, item in enumerate(items):
+        try:
+            ResourceAllocation.model_validate(item)
+        except ValidationError as exc:
+            error = exc.errors(include_input=False, include_url=False)[0]
+            path = ".".join(str(part) for part in error["loc"]) or "item"
+            return f"invalid_allocation:{index}.{path}:{error['type']}"
+    return "ok"

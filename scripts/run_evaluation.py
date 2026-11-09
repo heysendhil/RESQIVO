@@ -1,6 +1,6 @@
 """Run the offline RESQIVO evaluation and write a JSON report.
 
-Always offline: network connections are blocked, ANTHROPIC_API_KEY is removed
+Always offline: network connections are blocked, model API keys are removed
 from this process, LangSmith tracing is forced off, models are never
 downloaded, and every index is in memory. No live model request is made.
 
@@ -37,7 +37,8 @@ def make_offline() -> None:
         raise RuntimeError(f"Network access attempted: {address}")
 
     socket.socket.connect = blocked
-    os.environ.pop("ANTHROPIC_API_KEY", None)
+    for key in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
+        os.environ.pop(key, None)
     for name in ("LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2", "LANGCHAIN_TRACING"):
         os.environ[name] = "false"
     os.environ["RESQIVO_ALLOW_MODEL_DOWNLOAD"] = "false"

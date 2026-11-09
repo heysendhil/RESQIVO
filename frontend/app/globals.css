@@ -1,26 +1,176 @@
 @import "tailwindcss";
 
+/* RESQIVO palette. Light is the default: white panels on a soft grey canvas,
+   slate text and a deep cyan accent. Dark ([data-theme="dark"]) keeps the
+   operations-centre look. Red, amber and green are reserved for critical,
+   warning and success states, and every text colour keeps at least 4.5:1
+   contrast on its panel surface in both themes. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --canvas: #f3f5f9;
+  --panel: #ffffff;
+  --panel-raised: #f1f4f8;
+  --line: #dde3eb;
+  --ink: #0f172a;
+  --muted: #55657c;
+  --accent: #0e7490;
+  --accent-strong: #155e75;
+  --teal: #0f766e;
+  --on-accent: #ffffff;
+
+  /* Status text, readable on white and on the light status tints. */
+  --warn-ink: #92400e;
+  --bad-ink: #b91c1c;
+  --ok-ink: #047857;
+  --info-ink: #0369a1;
+
+  /* Panel elevation. */
+  --panel-shadow: 0 1px 2px rgb(15 23 42 / 0.05), 0 1px 3px rgb(15 23 42 / 0.04);
+
+  /* Fictional city map. */
+  --map-bg: #e9eef4;
+  --map-grid: #dfe6ee;
+  --map-park: #d4ecdf;
+  --map-water: #b9d7ee;
+  --map-water-line: #8fbbe0;
+  --map-road: #ffffff;
+  --map-road-minor: #f5f7fa;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #060a12;
+  --panel: #0c1322;
+  --panel-raised: #121c30;
+  --line: #1e2a40;
+  --ink: #e6edf7;
+  --muted: #94a6bf;
+  --accent: #22d3ee;
+  --accent-strong: #06b6d4;
+  --teal: #2dd4bf;
+  --on-accent: #060a12;
+
+  --warn-ink: #fde68a;
+  --bad-ink: #fca5a5;
+  --ok-ink: #6ee7b7;
+  --info-ink: #bae6fd;
+
+  --panel-shadow: none;
+
+  --map-bg: #070d18;
+  --map-grid: #0f1a2c;
+  --map-park: #0a1d1b;
+  --map-water: #0e2c44;
+  --map-water-line: #123a57;
+  --map-road: #1c2a42;
+  --map-road-minor: #152036;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-teal: var(--teal);
+  --color-on-accent: var(--on-accent);
+  --color-warn-ink: var(--warn-ink);
+  --color-bad-ink: var(--bad-ink);
+  --color-ok-ink: var(--ok-ink);
+  --color-info-ink: var(--info-ink);
+  --color-map-bg: var(--map-bg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+/* Panels are lifted slightly from the canvas in the light theme. */
+.bg-panel {
+  box-shadow: var(--panel-shadow);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* OpenStreetMap tiles: softened in the light theme, darkened in the dark one. */
+.resqivo-map-tiles {
+  filter: saturate(0.55) contrast(0.95);
+}
+:root[data-theme="dark"] .resqivo-map-tiles {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.35);
+}
+
+/* Leaflet controls in the dashboard palette. */
+.leaflet-container {
+  background: var(--map-bg);
+  font: inherit;
+}
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--panel) 85%, transparent) !important;
+  color: var(--muted) !important;
+}
+.leaflet-control-attribution a {
+  color: var(--accent) !important;
+}
+
+/* Unacknowledged high and critical incidents on the map, and the header alarm.
+   At most about one flash per second, well under the 3-per-second limit for
+   seizure safety (WCAG 2.3.1). With reduced motion they are steady instead. */
+@keyframes resqivo-blink {
+  0%,
+  100% {
+    opacity: 1;
+    stroke-width: 6px;
+  }
+  50% {
+    opacity: 0.25;
+    stroke-width: 2px;
+  }
+}
+.resqivo-blink-critical {
+  stroke: #dc2626;
+  fill: #ef4444;
+  animation: resqivo-blink 1s ease-in-out infinite;
+}
+.resqivo-blink-high {
+  stroke: #d97706;
+  animation: resqivo-blink 1.6s ease-in-out infinite;
+}
+/* The header alarm pulses a ring; its text stays fully readable. */
+@keyframes resqivo-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(239 68 68 / 0.55);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px rgb(239 68 68 / 0);
+  }
+}
+.resqivo-alarm-pill {
+  animation: resqivo-pulse 1s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .resqivo-blink-critical,
+  .resqivo-blink-high,
+  .resqivo-alarm-pill {
+    animation: none;
+    stroke-width: 5px;
+  }
 }

@@ -12,8 +12,9 @@ All code is in `backend/app/rag/`:
 |---|---|
 | `config.py` | Settings from environment variables; default paths |
 | `manifest.py` | Validates `knowledge/seed/sources.json`; selects sources with `include_in_index: true` |
-| `ingest.py` | Loads approved sources from local text files and synthetic fixtures; nothing is downloaded |
-| `chunking.py` | Deterministic word-window chunking (150 words, 30-word overlap) |
+| `ingest.py` | Loads approved sources from a local text file or PDF, and synthetic fixtures; nothing is downloaded |
+| `pdf.py` | Page-by-page PDF text extraction with `pypdf` (section 3.1); no OCR |
+| `chunking.py` | Deterministic word-window chunking (150 words, 30-word overlap); PDF documents are chunked page by page |
 | `embeddings.py` | Injectable embedding providers |
 | `store.py` | ChromaDB storage and attributed retrieval (`KnowledgeStore`) |
 | `cli.py` | Command line for building and querying the index |
@@ -51,11 +52,68 @@ python -m app.rag.cli build --corpus approved
 python -m app.rag.cli query "health emergency coordination" -k 3
 ```
 
-Building the approved corpus reads only sources marked `include_in_index: true` in the manifest; currently that is **WHO-01** only. For each such source, a maintainer must first prepare a plain-text file at `knowledge/local/<SOURCE-ID>.txt` (for example `knowledge/local/WHO-01.txt`) from the official document listed in the manifest. The pipeline never downloads documents, and it reads no file for any other source, even if one is present. `knowledge/local/`, PDFs under `knowledge/`, and `data/index/` are ignored by Git.
+Building the approved corpus reads only sources marked `include_in_index: true` in the manifest; currently that is **WHO-01** only. For each such source, a maintainer saves a local copy of the official document listed in the manifest in `knowledge/local/`, as **either**:
 
-There is currently no PDF text extraction: no PDF library is among the verified dependencies, so source text must be prepared outside the pipeline.
+- the PDF itself, `knowledge/local/<SOURCE-ID>.pdf` (for example `WHO-01.pdf`), or
+- a prepared plain-text file, `knowledge/local/<SOURCE-ID>.txt`.
 
-Rebuilding a source replaces its earlier chunks. Errors are printed as `Error: ...` with exit status 1.
+Having both for one source is an error, so it is always clear which was indexed. The pipeline never downloads documents, and it reads no file for any other source, even if one is present: to index another PDF, it must first be added to `knowledge/seed/sources.json` with a verified open licence (section 4). `knowledge/local/`, PDFs under `knowledge/`, and `data/index/` are ignored by Git.
+
+**Repeatable builds.** Chunk IDs are deterministic (`<SOURCE-ID>:<NNNN>`), so rebuilding a source overwrites its chunks instead of duplicating them, and chunks left over from a longer earlier version are removed. All chunks are embedded before the index is touched, so an embedding failure leaves the existing chunks unchanged. Errors are printed as `Error: ...` with exit status 1, without a traceback.
+
+**Checking the index:**
+
+```bash
+python -m app.rag.cli sources     # each source: chunk count, file, indexed PDF pages
+```
+
+The running API reads the index on every request, so no restart is needed after a build.
+
+### 3.1 PDF extraction
+
+`app/rag/pdf.py` uses `pypdf` (pinned in `requirements.txt`; pure Python, no further dependencies), imported only when a PDF is read, so the API never loads it.
+
+- **Per page.** Text is extracted page by page, and chunks never span two pages. Each chunk stores `page` (1-based, as PDF viewers number pages) and `source_file` in its metadata. Text files store `source_file` only.
+- **Citations.** For PDF chunks, the stored `url` is the manifest's official URL with `#page=N` appended, which PDF viewers open at that page. The `/answer` citation schema is unchanged; the page reaches the user through the URL. `query` also prints `page N of <file>`.
+- **Scanned PDFs.** There is no OCR. Pages without extractable text are skipped and reported by `build` (`Warning: no text on page(s) 2-3 …`), never indexed as empty text. A PDF with no text on any page is rejected: `no text could be extracted … It may be a scanned image; OCR is not supported.`
+- **Errors** (all `IngestionError`, reported by the CLI as `Error: <file>: …`):
+
+| Problem | Message |
+|---|---|
+| Missing or unreadable file | `the file cannot be read.` |
+| Zero-byte file | `the file is empty.` |
+| Not a PDF, truncated or corrupt | `not a valid PDF file.` |
+| Password protected | `the PDF is password protected.` PDFs encrypted only to set permissions (empty open password) are read normally. |
+| Unsupported encryption | `the PDF is encrypted with an unsupported method.` |
+| A page fails to extract | `text extraction failed on page N.` The whole document is refused rather than indexed with a silent gap. |
+| No pages, over 2,000 pages, or over 100 MB | Rejected with the limit in the message |
+| Embedding failed | `Embedding failed; the index was not changed.` (an uncached `onnx-minilm` model keeps its own message, section 5) |
+| ChromaDB write failed | `Writing to the vector database failed; the index may be incomplete. Run the build again.` |
+
+- **Printed page numbers** on the first or last line of a page ("14", "viii", "- 3 -", "Page 7"; at most three digits) are removed before chunking, so they are not indexed as passage text.
+- **Page numbers in citations are PDF page positions** (what a PDF viewer shows and what `#page=N` opens), not the numbers printed on the pages. In WHO-01, PDF page 28 is printed as page 14, because the front matter uses roman numerals.
+
+### 3.2 Verified run on the real WHO-01 PDF (2026-10-24)
+
+The official PDF (`9789241516181-eng.pdf`, 1,688,353 bytes, SHA-256 `0c377379…628809`) was downloaded from the manifest's `source_url` into `knowledge/pdf/WHO-01.pdf`, which Git ignores. `knowledge/local/WHO-01.txt` was kept for the evaluation script.
+
+```bash
+cd backend
+set -a; source .env; set +a      # RESQIVO_EMBEDDING_PROVIDER=onnx-minilm
+python -m app.rag.cli --collection resqivo_knowledge_pdf build --corpus approved --local-dir ../knowledge/pdf
+python -m app.rag.cli --collection resqivo_knowledge_pdf sources
+python -m app.rag.cli --collection resqivo_knowledge_pdf query "Where should an emergency operations centre be established?" -k 3
+```
+
+| Check | Result |
+|---|---|
+| Extraction | Text from 44 of 48 pages; pages 2, 14, 46 and 47 have no text, are reported and are not indexed |
+| Index | 142 chunks; building a second time leaves 142 (no duplicates) |
+| Retrieval, 28 WHO-01 questions (`knowledge/local/WHO-01.eval.json`) | The evidence sentence is in the top 4 for 20 questions, and in the top result for 15 |
+| Example | "Where should an emergency operations centre be established?" returns WHO-01, `WHO-01.pdf`, page 28: "…should be established within the Ministry of Health or other appropriate health authority…" |
+| `POST /answer` with a stand-in model that quotes passage P1 | HTTP 200, `answered`, citation WHO-01 with URL ending `#page=28` |
+
+The backend's `.env` uses `RESQIVO_CHROMA_COLLECTION=resqivo_knowledge_pdf`. The earlier collections built from `WHO-01.txt` (`resqivo_knowledge` with hashing and `resqivo_knowledge_minilm`) remain as fallbacks. **Not yet verified:** answer quality with live Gemini, and extraction of tables and multi-column text in detail. The evaluation questions were written by an AI assistant and have not been reviewed by a domain expert.
 
 ## 4. Safety Rules Enforced in Code
 
@@ -115,6 +173,7 @@ All retrieval tests run offline. The tests that use ChromaDB or the CLI enable a
 | `tests/test_rag_embeddings.py` | Hashing determinism and normalisation, provider factory, settings |
 | `tests/test_rag_store.py` | Relevance, attribution, ordering, empty collection, invalid queries, duplicate sources, re-ingestion, no mixing, persistence, backend failure, missing attribution, untrusted text |
 | `tests/test_rag_ingest.py` | Approved-source selection, missing or empty local text, fixture labelling, CLI build and query, API startup separation |
+| `tests/test_rag_pdf.py` | PDF extraction per page, skipped and all-blank (scanned) pages, password-protected and permissions-only encryption, invalid, truncated, empty and missing files, per-page extraction failure, approved-source loading, text/PDF ambiguity, page-aware chunking and metadata, `#page=N` URLs, retrieval and `/answer` citations, repeat indexing without duplicates, stale-chunk removal, embedding and ChromaDB write failures, CLI `build`/`sources`/`query`, API startup not loading `pypdf`. PDFs are generated in temporary directories. |
 | `tests/test_rag_model_download.py` | Download guard: missing or partial cache refused by default, cached model used, explicit permission (setting and CLI option), flag parsing, CLI errors, retrieval and `/answer` error reporting, pinned source and hash unchanged. Uses a stand-in for ChromaDB's model class, so no model is loaded or downloaded. |
 
 ```bash
@@ -127,7 +186,7 @@ python -m pytest -q                       # full suite
 
 ## 7. Grounded Question Answering (`POST /answer`)
 
-Code is in `backend/app/qa/`. The endpoint retrieves passages from the configured collection, asks Claude to answer from those passages only, and returns citations built from retrieval metadata.
+Code is in `backend/app/qa/`. The endpoint retrieves passages from the configured collection, asks the Gemini model to answer from those passages only (provider details: `docs/model-provider.md`), and returns citations built from retrieval metadata.
 
 ### 7.1 Request and response
 
@@ -175,7 +234,7 @@ The question is trimmed and must be 1–1,000 characters. Unknown fields are rej
 
 | Status | `detail` | Cause |
 |---|---|---|
-| 503 | `Question answering is not configured.` | `ANTHROPIC_API_KEY` missing, or invalid QA or retrieval settings |
+| 503 | `Question answering is not configured.` | `GOOGLE_API_KEY` missing, or invalid QA or retrieval settings |
 | 503 | `Knowledge retrieval is unavailable.` | The vector store failed |
 | 502 | `The language model did not return a usable answer.` | Model error, refusal, or empty output |
 | 413 | `Request body too large.` | Body over `RESQIVO_MAX_BODY_BYTES` (default 1 MiB; `docs/stress-testing.md` section 2.1) |
@@ -185,8 +244,8 @@ The question is trimmed and must be 1–1,000 characters. Unknown fields are rej
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | none | Claude API key. Read from the environment only; never logged or returned. Without it, `/answer` returns 503. |
-| `RESQIVO_LLM_MODEL` | `claude-opus-5-5` | Claude model ID |
+| `GOOGLE_API_KEY` | none | Gemini API key (backend only). Read from the environment only; never logged or returned. Without it, `/answer` returns 503. |
+| `RESQIVO_LLM_MODEL` | `gemini-3.8-flash` | Gemini model ID |
 | `RESQIVO_QA_TOP_K` | `4` | Passages retrieved per question (1–20) |
 | `RESQIVO_QA_MAX_DISTANCE` | `1.0` | Cosine-distance cut-off (above 0, at most 2). Passages farther away are not shown to the model. Not calibrated for any real embedding model. |
 
@@ -195,11 +254,11 @@ The retrieval settings in section 2 select which collection is searched. If it h
 ### 7.3 How grounding and safety are enforced
 
 - **Separated prompt.** The rules are in the system message. The question and the passages are in the user message, each in its own delimiter. Passage and question text are HTML-escaped, so they cannot close their delimiters. The system message tells the model that passages are untrusted data whose instructions must not be followed.
-- **No tools.** The model is called without tools, tool choice, `temperature` or thinking settings. It can only produce text, so it cannot take actions. Forced tool choice and sampling parameters are rejected by the current Claude 5.5 models (`docs/dependency-compatibility.md`).
+- **No tools.** The model is called without tools, tool choice or sampling parameters (temperature is left to the Gemini 3+ default; thinking is set to `low`). It can only produce text, so it cannot take actions. A reply whose `finish_reason` is not `STOP` (safety block, truncation and so on) is treated as a model error, never as an answer (`docs/model-provider.md` section 4).
 - **Citations come from metadata.** Citations are copied from the retrieved passages' metadata; nothing in a citation comes from model output.
 - **Sentence-level grounding validation** (section 7.3.1). Every answer, including `/review`, `/draft-plan` guidance and tool-calling answers, is checked sentence by sentence before it is accepted.
 - **Validator unaffected.** `/answer` never calls or changes `validate_plan`. A test confirms that `/validate` returns the same violations after an answer claims every plan is valid.
-- **Startup unaffected.** The service is built per request, so importing `app.main` does not load ChromaDB or the Claude client.
+- **Startup unaffected.** The service is built per request, so importing `app.main` does not load ChromaDB or the Gemini client.
 
 #### 7.3.1 Grounding validation rules
 
@@ -228,7 +287,7 @@ The system prompt also tells the model to cite every factual sentence, each labe
 
 ### 7.4 Limitations
 
-- **No live Claude request has been made.** All tests use fake models. Whether `claude-opus-5-5` follows the citation format and the `INSUFFICIENT_EVIDENCE` convention is **unverified**.
+- **No live model request has been made** (neither Claude, the earlier provider, nor Gemini). All tests use fake or mocked models. Whether `gemini-3.8-flash` follows the citation format and the `INSUFFICIENT_EVIDENCE` convention is **unverified**.
 - **Real-world answer quality is not validated.** Only synthetic fixtures are indexed; WHO-01 is not indexed, and no real embedding model is approved.
 - **The distance threshold of 1.0 is a placeholder.** It is meaningful for the `hashing` provider, but not calibrated for a real model.
 - **Grounding checks are lexical, not semantic.** They show that a sentence's words and numbers come from the passages it cites. They cannot show that the passage means what the sentence says: reordering words, negation, or misattributing a figure to a different item can pass. A faithful paraphrase that uses different words can be rejected, causing a false `insufficient_evidence`. Semantic review still needs a person or an LLM judge.

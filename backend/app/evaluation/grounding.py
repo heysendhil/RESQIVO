@@ -180,7 +180,7 @@ def run_grounding(
         ],
         limitations=[
             "Scripted answers stand in for the model, so results describe the "
-            "application's safeguards, not Claude's answer quality.",
+            "application's safeguards, not the model's answer quality.",
             "Support checks are lexical: a sentence whose words mostly come from "
             "the cited passage can pass while misstating it, and a faithful "
             "paraphrase can be rejected.",

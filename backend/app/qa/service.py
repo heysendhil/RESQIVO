@@ -18,6 +18,7 @@ from app.qa.errors import (
 )
 from app.qa.grounding import check_grounding
 from app.qa.prompt import INSUFFICIENT_EVIDENCE_MARKER, build_messages, passage_label
+from app.qa.replies import failure_fields, reply_fields, unusable_reply
 from app.qa.schemas import AnswerResponse, Citation
 from app.rag.embeddings import EmbeddingModelUnavailableError
 from app.rag.store import KnowledgeBaseEmptyError, RetrievalError, RetrievedPassage
@@ -126,14 +127,27 @@ class QuestionAnsweringService:
             response = self._model.invoke(build_messages(question, passages))
         except Exception as exc:
             record_model_call("answer", ok=False)
+            log_event(
+                logger,
+                "model.failed",
+                call="answer",
+                stage="request",
+                **failure_fields(exc),
+            )
             raise ModelResponseError("The language model request failed.") from exc
 
-        metadata = getattr(response, "response_metadata", None) or {}
         text = (getattr(response, "text", "") or "").strip()
-        refused = metadata.get("stop_reason") == "refusal"
-        record_model_call("answer", ok=bool(text) and not refused)
-        if refused:
-            raise ModelResponseError("The language model declined to answer.")
+        blocked = unusable_reply(response)
+        record_model_call("answer", ok=bool(text) and not blocked)
+        if blocked:
+            log_event(
+                logger,
+                "model.failed",
+                call="answer",
+                stage="reply",
+                **reply_fields(response),
+            )
+            raise ModelResponseError("The language model did not complete an answer.")
         if not text:
             raise ModelResponseError("The language model returned no answer.")
         return text

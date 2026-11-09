@@ -6,10 +6,10 @@ Measures three phases separately:
 3. steady state: a fixed number of requests at bounded concurrency.
 
 The ASGI app runs in-process through httpx2's ASGITransport, so no socket is
-opened. Network connections are blocked, ANTHROPIC_API_KEY is removed, tracing
+opened. Network connections are blocked, model API keys are removed, tracing
 is forced off, and /answer, /review and /draft-plan use the content-driven
 fake model in app/evaluation/loadtest.py. Fake-model latency (0 ms by default)
-says nothing about live Claude latency.
+says nothing about live model latency.
 
     cd backend
     python ../scripts/benchmark.py --output /tmp/resqivo-bench.json
@@ -40,7 +40,8 @@ def make_offline() -> None:
         raise RuntimeError(f"Network access attempted: {address}")
 
     socket.socket.connect = blocked
-    os.environ.pop("ANTHROPIC_API_KEY", None)
+    for key in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
+        os.environ.pop(key, None)
     for name in ("LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2", "LANGCHAIN_TRACING"):
         os.environ[name] = "false"
 
@@ -87,7 +88,8 @@ def measure_startup(runs: int) -> dict:
         "print(time.perf_counter() - t)"
     )
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    env.pop("ANTHROPIC_API_KEY", None)
+    for key in ("GOOGLE_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
+        env.pop(key, None)
     times = []
     for _ in range(runs):
         out = subprocess.run(
@@ -238,7 +240,7 @@ def main(argv=None) -> int:
         "peak_rss_mb": {"before_requests": rss_before, "after_requests": peak_rss_mb()},
         **measured,
         "notes": [
-            "Fake-model latency is not a prediction of live Claude latency.",
+            "Fake-model latency is not a prediction of live model latency.",
             "Single process, in-process transport: excludes network, TLS and "
             "server worker overhead.",
             "Peak RSS is the process high-water mark (ru_maxrss), not per-request.",

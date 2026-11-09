@@ -1,7 +1,7 @@
 """Structured operational events, request correlation and in-process metrics.
 
 Standard library only, so importing it does not load LangGraph, ChromaDB or the
-Claude client.
+model client.
 
 Events are single-line ``event=<name> request_id=<id> key=value ...`` records on
 the ``resqivo.*`` loggers. Values are bounded and restricted to a safe character

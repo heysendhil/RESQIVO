@@ -105,7 +105,7 @@ def test_invalid_questions_are_rejected(use_service, payload):
 
 
 def test_missing_credentials_return_503_without_details(monkeypatch, tmp_path):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setenv("RESQIVO_CHROMA_DIR", str(tmp_path / "chroma"))
 
     response = client.post("/answer", json={"question": "How is water stored?"})
@@ -198,5 +198,17 @@ def test_existing_routes_and_documentation(use_service):
     assert client.get("/health").json() == {"status": "ok", "service": "RESQIVO"}
 
     paths = client.get("/openapi.json").json()["paths"]
-    assert set(paths) == {"/health", "/validate", "/answer", "/review", "/draft-plan"}
+    assert set(paths) == {
+        "/health",
+        "/validate",
+        "/answer",
+        "/review",
+        "/draft-plan",
+        # Simulated incident feed (added with approval on 2026-10-23).
+        "/incidents",
+        "/incidents/{incident_id}",
+        "/incidents/simulate",
+        "/incidents/stream",
+        "/incidents/intake",
+    }
     assert set(paths["/answer"]) == {"post"}

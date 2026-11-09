@@ -250,9 +250,10 @@ def run_tool_calling(
         results=results,
         metrics=metrics,
         limitations=[
-            "Scripted tool calls stand in for Claude, so requests_authorized_for_stage "
-            "and requests_with_valid_arguments describe the fixtures (which include "
+            "Scripted tool calls stand in for the model, so "
+            "requests_authorized_for_stage and requests_with_valid_arguments "
+            "describe the fixtures (which include "
             "deliberately bad calls), not model behaviour.",
-            "Whether Claude selects tools sensibly needs a supervised live run.",
+            "Whether the model selects tools sensibly needs a supervised live run.",
         ],
     )

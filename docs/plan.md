@@ -50,7 +50,7 @@ Create only the folders and files required for the active task. Do not scaffold 
 | 2.2 Synthetic scenario fixtures | Not started | Sample plans exist only in `frontend/lib/sample-plans.ts` |
 | 2.3 Deterministic planning tools | Done | `validate_plan` and its tests |
 | 3.1 Scenario API | Not started | `POST /validate` exists, but there are no scenario endpoints |
-| 3.3 Draft plan and validation view | Partial | The frontend displays `POST /validate` results |
+| 3.3 Draft plan and validation view | Done (offline-tested) | Dashboard in `frontend/` calls all five endpoints (`frontend/README.md`): editable synthetic workspace; deterministic validation labelled authoritative; drafts labelled "Draft — requires human review"; review with corrections; grounded Q&A with citations treated as untrusted; mapped errors for 413, 422, 502, 503 and 504. 64 Vitest tests with `fetch` stubbed; lint and tsc clean. `npm run build` not run (it downloads the Geist font from Google); not yet verified in a browser against a live backend |
 | 4.0 Dependency compatibility check | Done | `docs/dependency-compatibility.md` |
 | 4.1 Knowledge preparation | Partial | `docs/knowledge-sources.md` and `knowledge/seed/sources.json`; only WHO-01 is cleared for indexing; NDMA permission and three licence checks outstanding |
 | 4.2 Retrieval pipeline | Done (synthetic corpus) | `backend/app/rag/`, `docs/rag.md`; offline tests pass with synthetic fixtures. `onnx-minilm` approved for opt-in evaluation only (`docs/embedding-evaluation.md`); `hashing` remains the default. `onnx-minilm` refuses to download its model unless `RESQIVO_ALLOW_MODEL_DOWNLOAD=true` or `--allow-model-download` is given (`docs/rag.md` section 5); full suite 188 passed |
@@ -66,6 +66,7 @@ Create only the folders and files required for the active task. Do not scaffold 
 | 7.2 AI evaluation | Partial | Offline framework done (row above). Not done: supervised live-model evaluation, human or LLM-judge review of semantic grounding, RAGAS |
 | 7.3 Observability | Done (offline) | `backend/app/observability.py`, `docs/observability.md`: structured single-line events for request start and end, workflow nodes, summaries and failures, retrieval, answers, grounding rejections, tool calls, validation and corrections. Correlation via a validated `X-Request-ID`, propagated through LangGraph nodes and tool executions. An in-process metrics registry (counters and duration histograms, not exposed over HTTP). Injection-safe formatting, logging failures contained, and payloads and secrets never logged. LangSmith stays off by default, and hides inputs and outputs if enabled. 39 tests; full suite 496 passed. Tracing with LangSmith enabled not verified live |
 | Load, concurrency and performance testing (assigned as "Task 8") | Done (offline) | `backend/app/limits.py`, `backend/app/evaluation/loadtest.py`, `backend/tests/test_stress.py`, `scripts/benchmark.py`, `docs/stress-testing.md`. Added a request-body limit (413; default 1 MiB, bounds 16 KiB–8 MiB) and a cooperative per-request time budget (504; default 120 s, bounds 1–600 s). Concurrency isolation, failure, timeout and size tests: 39 tests; full suite 535 passed. Offline benchmark measured with fake models; no live Claude performance run. This is not the plan's Phase 6 scenario stress testing (row 6.1–6.2) |
+| Model provider migration to Google Gemini | Done (offline, mocked) | `docs/model-provider.md`. `langchain-google-genai` 4.4.0 and `google-genai` 2.29.0 replace `langchain-anthropic`; default model `gemini-3.8-flash` (stable; function calling and structured outputs supported, per Google's documentation on 2026-10-23); backend-only `GOOGLE_API_KEY`. Replies are usable only when `finish_reason` is `STOP`; provider errors are sanitized. API contracts, validation, grounding, correction and tool limits, request limits and the frontend are unchanged. 51 provider tests using the real adapter with the SDK call mocked, including rejection of non-Gemini model names; full suite 575 passed. **No live Gemini request made**; awaiting approval |
 | 7.4 Security review | Not started | |
 
 A backend CI workflow (`.github/workflows/ci.yml`) runs Ruff and pytest on pushes and pull requests to `main`.
@@ -87,7 +88,7 @@ A backend CI workflow (`.github/workflows/ci.yml`) runs Ruff and pytest on pushe
 - **Acceptance:** `test.md` specifies how the initial workflow will be verified.
 
 **Task 0.4 — AI architecture decision**
-- Record the approved AI stack: Anthropic Claude via `langchain-anthropic`, LangChain, LangGraph (replacing CrewAI), ChromaDB, RAGAS (subject to compatibility), and LangSmith (disabled by default).
+- Record the approved AI stack: Anthropic Claude via `langchain-anthropic` (replaced by Google Gemini via `langchain-google-genai` on 2026-10-23; `docs/model-provider.md`), LangChain, LangGraph (replacing CrewAI), ChromaDB, RAGAS (subject to compatibility), and LangSmith (disabled by default).
 - Record the knowledge publishers (NDMA India, WHO, UNDRR) and the AI control principles in `understanding.md` section 7.4.
 - **Acceptance:** Both documents describe all four capstone requirements (RAG, tool calling, evaluation, observability) without claiming they are implemented.
 
@@ -182,7 +183,7 @@ A backend CI workflow (`.github/workflows/ci.yml`) runs Ruff and pytest on pushe
 
 **Task 5.2 — Orchestrate a draft-plan workflow**
 - Implement a LangGraph workflow after confirming library compatibility (Task 4.0).
-- Use structured inputs and outputs, with Claude accessed through `langchain-anthropic`.
+- Use structured inputs and outputs, with the model accessed through LangChain (Gemini via `langchain-google-genai` since 2026-10-23; originally Claude via `langchain-anthropic`).
 - Include a deterministic validation step that application code always runs on the proposed plan; it is not a tool the model may choose to skip.
 - If validation fails, allow a fixed, configurable maximum number of correction attempts, then return the latest plan with its validation failures.
 - **Acceptance:** A test scenario completes the workflow; the returned validity always equals `validate_plan` output, including when a fake model claims an invalid plan is valid (`test.md` SAFE-03); correction stops at the configured maximum; failures are recorded clearly (SAFE-08).
@@ -251,8 +252,8 @@ Planned backend environment variables, documented with placeholder values in a b
 
 | Variable | Purpose | Secret |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Claude API access | Yes |
-| `RESQIVO_LLM_MODEL` | Claude model ID | No |
+| `GOOGLE_API_KEY` | Gemini API access (backend only; replaced `ANTHROPIC_API_KEY` on 2026-10-23) | Yes |
+| `RESQIVO_LLM_MODEL` | Gemini model ID (default `gemini-3.8-flash`) | No |
 | `LANGSMITH_TRACING` | Enables tracing; defaults to `false` | No |
 | `LANGSMITH_API_KEY` | LangSmith access | Yes |
 | `LANGSMITH_PROJECT` | LangSmith project name | No |

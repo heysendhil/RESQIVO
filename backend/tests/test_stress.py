@@ -60,7 +60,7 @@ CONCURRENCY = 16
 @pytest.fixture(autouse=True)
 def clean_state(monkeypatch):
     for name in (
-        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
         "RESQIVO_MAX_BODY_BYTES",
         "RESQIVO_REQUEST_TIMEOUT_SECONDS",
         "RESQIVO_MAX_TOOL_CALLS",
@@ -342,7 +342,7 @@ def test_logging_failures_under_load_do_not_change_results():
 
 
 def test_sensitive_fields_are_not_emitted_under_load(events, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-load-secret")
+    monkeypatch.setenv("GOOGLE_API_KEY", "AIza-load-secret")
     install_offline_overrides(app)
     secret_question = "Family at 7 Hidden Lane case-1 needs insulin"
 
@@ -355,7 +355,7 @@ def test_sensitive_fields_are_not_emitted_under_load(events, monkeypatch):
     for secret in (
         "Hidden Lane",
         "insulin",
-        "sk-ant-load-secret",
+        "AIza-load-secret",
         "covered containers",
     ):
         assert secret not in logged
@@ -732,7 +732,7 @@ def test_benchmark_script_runs_offline(tmp_path):
     from app.rag.config import REPO_ROOT
 
     output = tmp_path / "bench.json"
-    env = {**os.environ, "ANTHROPIC_API_KEY": "sk-must-not-be-used"}
+    env = {**os.environ, "GOOGLE_API_KEY": "sk-must-not-be-used"}
     result = subprocess.run(
         [
             sys.executable,

@@ -1,6 +1,8 @@
 """Build and query the local knowledge index. Run from backend/:
 
     python -m app.rag.cli build --corpus synthetic
+    python -m app.rag.cli build --corpus approved   # <ID>.txt or <ID>.pdf
+    python -m app.rag.cli sources
     python -m app.rag.cli query "How should water be stored?"
 
 Separate from API startup: app.main does not import this module.
@@ -47,8 +49,49 @@ def _build(args: argparse.Namespace) -> int:
     else:
         manifest = load_manifest(Path(args.manifest))
         documents = load_approved_documents(manifest, Path(args.local_dir))
+    for document in documents:
+        if document.page_count is None:
+            continue
+        missing = document.pages_without_text()
+        print(
+            f"{document.source_id}: {document.source_file}, text extracted from "
+            f"{len(document.pages)} of {document.page_count} page(s)."
+        )
+        if missing:
+            print(
+                f"  Warning: no text on page(s) {_page_ranges(missing)} (scanned "
+                "images or blank pages; OCR is not supported). Not indexed."
+            )
     stored = _store(args).ingest(documents)
     print(f"Indexed {len(documents)} document(s) as {stored} chunk(s).")
+    return 0
+
+
+def _page_ranges(pages: list[int] | tuple[int, ...]) -> str:
+    """[1, 2, 3, 7] -> "1-3, 7"."""
+    ranges = []
+    for page in pages:
+        if ranges and page == ranges[-1][1] + 1:
+            ranges[-1][1] = page
+        else:
+            ranges.append([page, page])
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in ranges)
+
+
+def _sources(args: argparse.Namespace) -> int:
+    store = _store(args)
+    indexed = store.sources()
+    if not indexed:
+        print("The collection is empty. Run the build command first.")
+        return 0
+    for source in indexed:
+        label = " [SYNTHETIC]" if source.synthetic else ""
+        print(f"{source.source_id}{label}: {source.chunks} chunk(s) - {source.title}")
+        if source.source_file:
+            print(f"   file: {source.source_file}")
+        if source.pages:
+            print(f"   pages: {_page_ranges(source.pages)}")
+    print(f"Total: {store.count()} chunk(s) in {len(indexed)} source(s).")
     return 0
 
 
@@ -58,6 +101,8 @@ def _query(args: argparse.Namespace) -> int:
         print(f"{rank}. {passage.source_id}{label} distance={passage.distance:.3f}")
         print(f"   {passage.title} - {passage.publisher}")
         print(f"   {passage.url}")
+        if passage.page is not None:
+            print(f"   page {passage.page} of {passage.source_file}")
         print(f"   {passage.text[:300]}")
     return 0
 
@@ -81,6 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--manifest", default=str(DEFAULT_MANIFEST_PATH))
     build.add_argument("--local-dir", default=str(DEFAULT_LOCAL_SOURCES_DIR))
     build.set_defaults(handler=_build)
+
+    sources = commands.add_parser("sources", help="List the indexed sources.")
+    sources.set_defaults(handler=_sources)
 
     query = commands.add_parser("query", help="Retrieve attributed passages.")
     query.add_argument("text")

@@ -6,6 +6,8 @@ export interface SamplePlan {
   id: string;
   label: string;
   description: string;
+  /** The disaster location for this synthetic scenario, if the sample has one. */
+  scenarioLocation?: string;
   plan: PlanValidationRequest;
 }
 
@@ -51,6 +53,7 @@ export const samplePlans: SamplePlan[] = [
     label: "Flood response: within limits",
     description:
       "Water and first-aid kits sent to two shelters, all within stock and capacity.",
+    scenarioLocation: "Simulated District A",
     plan: {
       resources,
       shelters,
@@ -81,6 +84,7 @@ export const samplePlans: SamplePlan[] = [
     label: "Flood response: with problems",
     description:
       "Water is over-allocated, one allocation targets a shelter that does not exist, and one shelter is over capacity.",
+    scenarioLocation: "Simulated District B",
     plan: {
       resources,
       shelters: [

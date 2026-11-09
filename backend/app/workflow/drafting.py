@@ -30,8 +30,9 @@ from app.limits import check_deadline
 from app.models.plan import PlanValidationRequest
 from app.observability import ensure_request_context, log_event, record_model_call
 from app.qa.errors import ModelResponseError
+from app.qa.replies import failure_fields, reply_fields, unusable_reply
 from app.services.validation import ValidationResult, validate_plan
-from app.workflow.correction import parse_corrected_plan
+from app.workflow.correction import diagnose_allocations_text, parse_corrected_plan
 from app.workflow.graph import PlanWorkflowBase, ReviewState, _codes
 from app.workflow.schemas import (
     CORRECTABLE_CODES,
@@ -200,12 +201,25 @@ class DraftPlanWorkflow(PlanWorkflowBase):
             reply = self._model.invoke(build_draft_messages(state["request"]))
         except Exception as exc:
             record_model_call("draft", ok=False)
+            log_event(
+                logger,
+                "model.failed",
+                call="draft",
+                stage="request",
+                **failure_fields(exc),
+            )
             raise ModelResponseError("The language model request failed.") from exc
 
-        metadata = getattr(reply, "response_metadata", None) or {}
-        if metadata.get("stop_reason") == "refusal":
+        if unusable_reply(reply):
             record_model_call("draft", ok=False)
-            raise ModelResponseError("The language model declined to draft a plan.")
+            log_event(
+                logger,
+                "model.failed",
+                call="draft",
+                stage="reply",
+                **reply_fields(reply),
+            )
+            raise ModelResponseError("The language model did not complete a draft.")
 
         text = (getattr(reply, "text", "") or "").strip()
         draft = parse_corrected_plan(text, state["plan"]) if text else None
@@ -219,6 +233,14 @@ class DraftPlanWorkflow(PlanWorkflowBase):
             allocations=len(draft.allocations) if draft else 0,
         )
         if not usable:
+            log_event(
+                logger,
+                "model.failed",
+                call="draft",
+                stage="parse",
+                reason=diagnose_allocations_text(text),
+                **reply_fields(reply),
+            )
             raise ModelResponseError(
                 "The language model did not return a usable draft."
             )

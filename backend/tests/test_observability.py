@@ -289,7 +289,7 @@ def test_model_errors_are_recorded_without_details(events):
 
 
 def test_configuration_failures_are_recorded(events, monkeypatch, tmp_path):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setenv("RESQIVO_CHROMA_DIR", str(tmp_path / "chroma"))
 
     response = client.post("/answer", json={"question": "Water?"})
@@ -375,7 +375,7 @@ def test_unknown_paths_do_not_create_unbounded_labels():
 
 
 def test_payloads_and_secrets_are_never_logged(events, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret-value")
+    monkeypatch.setenv("GOOGLE_API_KEY", "AIza-test-secret-value")
     request = draft_request(
         scenario={
             "scenario_id": "SCN-PRIV",
@@ -404,7 +404,7 @@ def test_payloads_and_secrets_are_never_logged(events, monkeypatch):
         "Confidential passage",
         "Drinking Water",
         "Community Hall",
-        "sk-ant-secret-value",
+        "AIza-test-secret-value",
         "covered containers",
     ):
         assert secret not in logged
@@ -529,7 +529,7 @@ def test_disabled_tracing_leaves_environment_untouched(monkeypatch, tmp_path):
         "LANGCHAIN_TRACING_V2",
         "LANGSMITH_HIDE_INPUTS",
         "LANGSMITH_HIDE_OUTPUTS",
-        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("RESQIVO_CHROMA_DIR", str(tmp_path / "chroma"))
@@ -549,7 +549,19 @@ def test_existing_response_bodies_are_unchanged():
     body = client.post("/validate", json=plan(quantity=900).model_dump()).json()
     assert body == {"valid": True, "violations": []}
     paths = set(client.get("/openapi.json").json()["paths"])
-    assert paths == {"/health", "/validate", "/answer", "/review", "/draft-plan"}
+    assert paths == {
+        "/health",
+        "/validate",
+        "/answer",
+        "/review",
+        "/draft-plan",
+        # Simulated incident feed (added with approval on 2026-10-23).
+        "/incidents",
+        "/incidents/{incident_id}",
+        "/incidents/simulate",
+        "/incidents/stream",
+        "/incidents/intake",
+    }
 
 
 def test_startup_stays_lazy():
@@ -558,8 +570,8 @@ def test_startup_stays_lazy():
             sys.executable,
             "-c",
             "import sys, app.main; print(sorted(m for m in sys.modules if "
-            "m.startswith(('langgraph', 'chromadb', 'langchain_anthropic', "
-            "'anthropic', 'app.rag', 'app.workflow.graph'))))",
+            "m.startswith(('langgraph', 'chromadb', 'langchain_google_genai', "
+            "'google.genai', 'app.rag', 'app.workflow.graph'))))",
         ],
         capture_output=True,
         text=True,

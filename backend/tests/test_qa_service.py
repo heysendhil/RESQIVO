@@ -201,9 +201,9 @@ def test_model_exception_is_reported_without_internal_details():
 
 
 def test_model_refusal_is_reported():
-    model = RecordingModel("", metadata={"stop_reason": "refusal"})
+    model = RecordingModel("", metadata={"finish_reason": "SAFETY"})
 
-    with pytest.raises(ModelResponseError, match="declined"):
+    with pytest.raises(ModelResponseError, match="did not complete"):
         service(FakeRetriever([WATER]), model).answer("q")
 
 

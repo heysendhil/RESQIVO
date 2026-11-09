@@ -99,7 +99,7 @@ def test_review_errors_hide_internal_details(use_workflow):
 
 
 def test_review_without_credentials_returns_503(monkeypatch, tmp_path):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setenv("RESQIVO_CHROMA_DIR", str(tmp_path / "chroma"))
 
     response = client.post("/review", json={"question": "Review"})

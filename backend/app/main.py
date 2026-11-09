@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.incidents.api import router as incidents_router
 from app.limits import (
     BodySizeLimitMiddleware,
     LimitSettings,
@@ -41,9 +42,11 @@ from app.workflow.schemas import (
 )
 
 # Local Next.js development server. Hosted origins are added when deployed.
+# resqivo.localhost is a loopback alias browsers resolve without a hosts entry.
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://resqivo.localhost:3000",
 ]
 
 app = FastAPI(
@@ -129,9 +132,12 @@ async def observe_request(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
+
+
+app.include_router(incidents_router)
 
 
 @app.get("/health")

@@ -1,6 +1,8 @@
 # RESQIVO — Dependency Compatibility Report (Task 4.0)
 
 **Date:** 2026-10-21
+> **Update 2026-10-23:** the model provider changed from Anthropic Claude to Google Gemini. `langchain-anthropic` and `anthropic` were removed and replaced by `langchain-google-genai` 4.4.0 and `google-genai` 2.29.0. See `docs/model-provider.md` for the versions, their release dates and the offline checks. The Claude findings below are kept as the Task 4.0 record.
+
 **Status:** Complete. No application code, requirements file, lockfile, or test was changed. All installs were made in disposable virtual environments outside the repository. No paid API was called and no API key was used.
 
 ## 1. Summary
@@ -182,7 +184,7 @@ These are proposals for later tasks. **Do not apply them in Task 4.0.** Add the 
 ```text
 langchain-core>=1.6.7,<2
 langgraph>=1.2.14,<1.3
-langchain-anthropic>=1.7.5,<1.8
+langchain-anthropic>=1.7.5,<1.8   # replaced 2026-10-23 by langchain-google-genai>=4.4.0,<4.5 and google-genai>=2.29.0,<3
 langchain-chroma>=1.1.0,<1.2
 chromadb>=1.5.9,<1.6
 langsmith>=0.14.4,<0.15

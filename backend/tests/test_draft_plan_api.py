@@ -144,7 +144,7 @@ def test_errors_hide_internal_details(use_workflow, error, status, detail):
 
 
 def test_draft_plan_without_credentials_returns_503(monkeypatch, tmp_path):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setenv("RESQIVO_CHROMA_DIR", str(tmp_path / "chroma"))
 
     response = client.post("/draft-plan", json=payload())
@@ -187,14 +187,15 @@ def test_existing_endpoints_still_behave_the_same():
         app.dependency_overrides.clear()
 
 
-def test_startup_does_not_load_langgraph_chromadb_or_claude():
+def test_startup_does_not_load_langgraph_chromadb_or_the_model_client():
     result = subprocess.run(
         [
             sys.executable,
             "-c",
             "import sys, app.main; print(sorted(m for m in sys.modules if "
-            "m.startswith(('langgraph', 'chromadb', 'langchain_anthropic', "
-            "'anthropic', 'app.rag', 'app.workflow.graph', 'app.workflow.drafting'))))",
+            "m.startswith(('langgraph', 'chromadb', 'langchain_google_genai', "
+            "'google.genai', 'app.rag', 'app.workflow.graph', "
+            "'app.workflow.drafting'))))",
         ],
         capture_output=True,
         text=True,

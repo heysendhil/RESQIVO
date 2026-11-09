@@ -53,6 +53,21 @@ class RetrievedPassage:
     chunk_index: int
     synthetic: bool
     distance: float
+    # Set for passages indexed from a PDF.
+    page: int | None = None
+    source_file: str | None = None
+
+
+@dataclass(frozen=True)
+class IndexedSource:
+    """What the collection holds for one source."""
+
+    source_id: str
+    title: str
+    chunks: int
+    synthetic: bool
+    source_file: str | None
+    pages: tuple[int, ...]
 
 
 class KnowledgeStore:
@@ -83,6 +98,8 @@ class KnowledgeStore:
             collection_configuration={"hnsw": {"space": "cosine"}},
         )
         self._collection = client.get_collection(collection_name)
+        self._embeddings = embeddings
+        self._max_batch = client.get_max_batch_size()
 
     def count(self) -> int:
         return self._collection.count()
@@ -124,14 +141,73 @@ class KnowledgeStore:
                 raise IngestionError(f"{document.source_id} has no text to index.")
             chunks.extend(document_chunks)
 
-        for source_id in source_ids:
-            self._vectorstore.delete(where={"source_id": source_id})
-        self._vectorstore.add_texts(
-            texts=[chunk.text for chunk in chunks],
-            metadatas=[chunk.metadata() for chunk in chunks],
-            ids=[chunk.chunk_id for chunk in chunks],
-        )
+        # Embed everything before touching the index, so an embedding failure
+        # leaves the existing chunks in place.
+        texts = [chunk.text for chunk in chunks]
+        try:
+            vectors = self._embeddings.embed_documents(texts)
+        except EmbeddingModelUnavailableError:
+            raise
+        except Exception as exc:
+            raise IngestionError(
+                "Embedding failed; the index was not changed."
+            ) from exc
+        if len(vectors) != len(texts):
+            raise IngestionError(
+                "The embedding provider returned the wrong number of vectors; "
+                "the index was not changed."
+            )
+
+        # Chunk IDs are deterministic, so re-indexing the same document
+        # overwrites its chunks instead of duplicating them. Chunks left over
+        # from a longer earlier version are then removed.
+        ids = [chunk.chunk_id for chunk in chunks]
+        metadatas = [chunk.metadata() for chunk in chunks]
+        try:
+            for start in range(0, len(ids), self._max_batch):
+                end = start + self._max_batch
+                self._collection.upsert(
+                    ids=ids[start:end],
+                    embeddings=vectors[start:end],
+                    documents=texts[start:end],
+                    metadatas=metadatas[start:end],
+                )
+            new_ids = set(ids)
+            for source_id in source_ids:
+                stored = self._collection.get(where={"source_id": source_id})["ids"]
+                stale = [chunk_id for chunk_id in stored if chunk_id not in new_ids]
+                if stale:
+                    self._collection.delete(ids=stale)
+        except Exception as exc:
+            raise IngestionError(
+                "Writing to the vector database failed; the index may be "
+                "incomplete. Run the build again."
+            ) from exc
         return len(chunks)
+
+    def sources(self) -> list[IndexedSource]:
+        """Summarise the indexed sources, sorted by source ID."""
+        metadatas = self._collection.get(include=["metadatas"])["metadatas"] or []
+        grouped: dict[str, list] = {}
+        for metadata in metadatas:
+            grouped.setdefault(str(metadata.get("source_id")), []).append(metadata)
+        summary = []
+        for source_id in sorted(grouped):
+            entries = grouped[source_id]
+            pages = sorted(
+                {m["page"] for m in entries if isinstance(m.get("page"), int)}
+            )
+            summary.append(
+                IndexedSource(
+                    source_id=source_id,
+                    title=str(entries[0].get("title", "")),
+                    chunks=len(entries),
+                    synthetic=bool(entries[0].get("synthetic")),
+                    source_file=entries[0].get("source_file") or None,
+                    pages=tuple(pages),
+                )
+            )
+        return summary
 
     def retrieve(self, query: str, k: int = 4) -> list[RetrievedPassage]:
         """Return up to k passages most similar to the query, with attribution."""
@@ -182,4 +258,6 @@ def _to_passage(document, score: float) -> RetrievedPassage:
         chunk_index=metadata["chunk_index"],
         synthetic=metadata["synthetic"],
         distance=float(score),
+        page=metadata["page"] if isinstance(metadata.get("page"), int) else None,
+        source_file=metadata.get("source_file") or None,
     )
